@@ -134,7 +134,7 @@ def learn_dataset(initial_lex, dataset_size):
     learner = WordLearner(initial_lex, update_perceptron_algo='reinforce')
     try:
         for v, q, a in iter_data():
-            learner.update_with_distant(q, v, a)
+            learner.update_with_distant(q, v, a, augment_lexicon_args=dict(iter_expression_kwargs=dict()))
     except Exception as e:
         print(e)
         raise e

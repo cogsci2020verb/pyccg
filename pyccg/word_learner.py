@@ -271,7 +271,7 @@ class WordLearner(object):
 
     return weighted_results
 
-  def update_with_distant(self, sentence, model, answer):
+  def update_with_distant(self, sentence, model, answer, augment_lexicon_args=None, update_perceptron_args=None):
     """
     Observe a new `sentence -> answer` pair in the context of some `model` and
     update learner weights.
@@ -284,7 +284,13 @@ class WordLearner(object):
     Returns:
       weighted_results: List of weighted parse results for the example.
     """
+    augment_lexicon_args = augment_lexicon_args or {}
+    update_perceptron_args = update_perceptron_args or {}
+
     kwargs = {"answer": answer}
+    augment_lexicon_args.update(kwargs)
+    update_perceptron_args.update(kwargs)
+
     return self._update_with_example(
         sentence, model,
         augment_lexicon_fn=augment_lexicon_distant,

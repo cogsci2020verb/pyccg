@@ -815,7 +815,7 @@ def likelihood_2afc(tokens, categories, exprs, sentence_parse, models):
 
 
 def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
-                      model, likelihood_fns, queue_limit=5):
+                      model, likelihood_fns, queue_limit=5, iter_expressions_args=None):
   """
   Make zero-shot predictions of the posterior `p(syntax, meaning | sentence)`
   for each of `tokens`.
@@ -851,6 +851,7 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
 
   get_arity = (lex.ontology and lex.ontology.get_expr_arity) \
       or get_semantic_arity
+  iter_expressions_args = iter_expressions_args or {}
 
   # We will restrict semantic arities based on the observed arities available
   # for each category. Pre-calculate the necessary associations.
@@ -858,8 +859,9 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
 
   def iter_expressions_for_arity(arity, max_depth=3):
     type_request = ontology.types[("e",) * (arity + 1)]
-    return ontology.iter_expressions(max_depth=max_depth,
-                                     type_request=type_request)
+    iter_expressions_args['max_depth'] = max_depth
+    iter_expressions_args['type_request'] = type_request
+    return ontology.iter_expressions(**iter_expressions_args)
 
   def iter_expressions_for_category(cat):
     """
