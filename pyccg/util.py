@@ -16,6 +16,10 @@ class NoParsesError(Exception):
     self.sentence = sentence
 
 
+class NoParsesSyntaxError(NoParsesError):
+  pass
+
+
 class Distribution(Counter):
   """
   Weight distribution with discrete support.
@@ -222,3 +226,28 @@ class tuple_unordered(tuple):
     return False
   def __hash__(self):
     return super().__hash__()
+
+
+def set_tqdm_enabled(value=True):
+  set_tqdm_enabled.value = value
+
+set_tqdm_enabled.value = True
+
+
+def tqdm(iterable, *args, enabled=None, **kwargs):
+  if enabled is None:
+    enabled = set_tqdm_enabled.value
+  from tqdm import tqdm as tqmd_
+  if enabled:
+    return tqdm_(iterable, *args, **kwargs)
+  return iterable
+
+
+def trange(*args, enabled=None, **kwargs):
+  if enabled is None:
+    enabled = set_tqdm_enabled.value
+  from tqdm import trange as trange_
+  if enabled:
+    return tqdm_(iterable, *args, **kwargs)
+  return range(*args, **kwargs)
+

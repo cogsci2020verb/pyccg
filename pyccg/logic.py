@@ -968,7 +968,6 @@ class Expression(SubstituteBindingsI):
 
                 varEx.variable.type = destType
                 varEx.type = destType
-                # print(key, val, type(varEx), varEx, varEx.type)
                 sig[key].append(varEx)
 
         self._set_type(signature=sig)
@@ -1447,9 +1446,6 @@ class ConstantExpression(AbstractVariableExpression):
         if signature is None:
             signature = defaultdict(list)
 
-        # print(self, other_type)
-        if r"\a b.ltzero" in str(self):
-            raise RuntimeError()
         resolution = ANY_TYPE
         if other_type != ANY_TYPE:
             resolution = other_type
@@ -1936,8 +1932,10 @@ class ConstantSystem(object):
     self._iter_new_constants_buffer = None
 
   def mark_used(self, constant):
-    assert constant.name in self._used, 'unregistered constant: {}'.format(constant)
-    self._used[constant.name] = True
+    # assert constant.name in self._used, 'unregistered constant: {}'.format(constant)
+    # TODO(Jiayuan Mao @ 04/08): add strict check while excluding all nullary function symbols.
+    if constant.name in self._used:
+      self._used[constant.name] = True
 
   def mark_used_expressions(self, expressions):
     for expr in expressions:
@@ -1964,8 +1962,9 @@ class ConstantSystem(object):
   def iter_new_constants(self, type_request=None, newly_used_constants_expr=None):
     if newly_used_constants_expr is not None:
       for name in newly_used_constants_expr:
-        if type_request is None or self.constants_dict[name].type.matches(type_request):
-          yield self.constants_dict[name]
+        if name in self.constants_dict:
+          if type_request is None or self.constants_dict[name].type.matches(type_request):
+            yield self.constants_dict[name]
     yield self.make_new_constant(type_request=type_request, newly_used_constants_expr=newly_used_constants_expr)
 
 
@@ -2316,8 +2315,6 @@ class Ontology(object):
               yield ConstantExpression(Variable(fn.name))
             else:
               # print("\t" * (6 - max_depth), fn, fn.arg_types)
-              sub_args = []
-
               all_arg_type_requests = list(fn.arg_types)
 
               def product_sub_args(i, ret, nuce):
@@ -2418,6 +2415,12 @@ class Ontology(object):
         # right now -- the following only considers yielding fixed functions
         # from the ontology.
         for function in self.functions:
+          # TODO(Jiayuan Mao @ 04/10): check the correctness of the following lie.
+          # I currently skip nullary functions since it has been handled as constant variables
+          # in L2311.
+          if function.arity == 0:
+              continue
+
           # Be a little strict here to avoid excessive enumeration -- only
           # consider emitting functions when the type request specifically
           # demands a function, not e.g. AnyType
@@ -2514,8 +2517,10 @@ class Ontology(object):
     if isinstance(expr, LambdaExpression):
       return 1 + self.get_expr_arity(expr.term)
     elif isinstance(expr, ApplicationExpression):
-      function = self.functions_dict[expr.pred.variable.name]
-      return function.arity - len(expr.args)
+      # NB(Jiayuan):: failed to handle: (\x.f(x, y))(a)
+      # function = self.functions_dict[expr.pred.variable.name]
+      # return function.arity - len(expr.args)
+      return self.get_expr_arity(expr.pred) - len(expr.args)
     elif isinstance(expr, (FunctionVariableExpression, ConstantExpression)) \
         and expr.variable.name in self.functions_dict:
       return self.functions_dict[expr.variable.name].arity
@@ -2589,7 +2594,10 @@ class Ontology(object):
       raise RuntimeError("unknown basic type %s" % (type_expr,))
 
   def _make_nltk_type_signature(self):
-    return {fn.name: fn.type for fn in self.functions}
+    signature = {fn.name: fn.type for fn in self.functions}
+    # NB(Jiayuan):: add the types of the constants.
+    signature.update({const.name: const.type for const in self.constants})
+    return signature
 
   def as_ec_sexpr(self, expr):
     """

@@ -6,11 +6,11 @@ import numpy as np
 from pyccg import chart
 from pyccg.lexicon import predict_zero_shot, \
     get_candidate_categories, get_semantic_arity, \
-    augment_lexicon_distant, augment_lexicon_cross_situational, augment_lexicon_2afc, \
+    augment_lexicon_nscl, augment_lexicon_distant, augment_lexicon_cross_situational, augment_lexicon_2afc, \
     build_bootstrap_likelihood
 from pyccg.perceptron import \
-    update_perceptron_distant, update_perceptron_cross_situational, update_perceptron_2afc
-from pyccg.util import Distribution, NoParsesError
+    update_perceptron_nscl, update_perceptron_distant, update_perceptron_cross_situational, update_perceptron_2afc
+from pyccg.util import Distribution, NoParsesError, NoParsesSyntaxError
 
 
 L = logging.getLogger(__name__)
@@ -137,7 +137,8 @@ class WordLearner(object):
                               beta=self.beta,
                               **augment_lexicon_args)
     except NoParsesError:
-      L.warn("Failed to induce any novel meanings.")
+      # TODO(Jiayuan Mao @ 04/10): suppress the warnings for now.
+      # L.warning("Failed to induce any novel meanings.")
       return self.lexicon
 
     return lex
@@ -247,14 +248,17 @@ class WordLearner(object):
           self.lexicon, sentence, model,
           learning_rate=self.learning_rate,
           **update_perceptron_args)
-    except NoParsesError as e:
+    except NoParsesSyntaxError as e:
       # No parse succeeded -- attempt lexical induction.
-      L.warning("Parse failed for sentence '%s'", " ".join(sentence))
-      L.warning(e)
+      # TODO(Jiayuan Mao @ 04/10): suppress the warnings for now.
+      # L.warning("Parse failed for sentence '%s'", " ".join(sentence))
+      # L.warning(e)
 
       self.lexicon = self.do_lexical_induction(sentence, model, augment_lexicon_fn,
                                                **augment_lexicon_args)
-      self.lexicon.debug_print()
+
+      # TODO(Jiayuan Mao @ 04/10): suppress the printing for now.
+      # self.lexicon.debug_print()
 
       # Attempt a new parameter update.
       try:
@@ -264,12 +268,41 @@ class WordLearner(object):
             **update_perceptron_args)
       except NoParsesError:
         return []
+    except NoParsesError:
+        return []
 
     if self.prune_entries is not None:
       prune_count = self.lexicon.prune(max_entries=self.prune_entries)
       L.info("Pruned %i entries from lexicon.", prune_count)
 
     return weighted_results
+
+  def update_with_nscl(self, sentence, model, answer, augment_lexicon_args=None, update_perceptron_args=None):
+    """
+    Observe a new `sentence -> answer` pair in the context of some `model` and
+    update learner weights. This function assumes that the `model` is jointly
+    optimized with the lexicon set.
+
+    Args:
+      sentence: List of token strings
+      model: `Model` instance
+      answer: Desired result from `model.evaluate(lf_result(sentence))`
+
+    Returns:
+      weighted_results: List of weighted parse results for the example.
+    """
+    augment_lexicon_args = augment_lexicon_args or {}
+    update_perceptron_args = update_perceptron_args or {}
+
+    kwargs = {"answer": answer}
+    update_perceptron_args.update(kwargs)
+
+    return self._update_with_example(
+        sentence, model,
+        augment_lexicon_fn=augment_lexicon_nscl,
+        update_perceptron_fn=update_perceptron_nscl,
+        augment_lexicon_args=augment_lexicon_args,
+        update_perceptron_args=update_perceptron_args)
 
   def update_with_distant(self, sentence, model, answer, augment_lexicon_args=None, update_perceptron_args=None):
     """
@@ -295,8 +328,8 @@ class WordLearner(object):
         sentence, model,
         augment_lexicon_fn=augment_lexicon_distant,
         update_perceptron_fn=update_perceptron_distant,
-        augment_lexicon_args=kwargs,
-        update_perceptron_args=kwargs)
+        augment_lexicon_args=augment_lexicon_args,
+        update_perceptron_args=update_perceptron_args)
 
   def update_with_cross_situational(self, sentence, model):
     """

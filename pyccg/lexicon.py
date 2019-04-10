@@ -14,14 +14,14 @@ import sys
 from nltk.ccg import lexicon as ccg_lexicon
 from nltk.ccg.api import PrimitiveCategory, FunctionalCategory, AbstractCCGCategory
 import numpy as np
-from tqdm import tqdm, trange
+from scipy.special import logsumexp
 
 from pyccg import chart
 from pyccg.combinator import category_search_replace, \
     type_raised_category_search_replace
 from pyccg import logic as l
 from pyccg.util import ConditionalDistribution, Distribution, UniquePriorityQueue, \
-    NoParsesError, tuple_unordered
+    NoParsesError, tuple_unordered, tqdm, trange
 
 
 L = logging.getLogger(__name__)
@@ -626,8 +626,10 @@ def get_candidate_categories(lex, tokens, sentence, smooth=1e-3):
         score += np.log(category_prior[category])
 
       # Likelihood weight comes from parse score
-      score += np.log(sum(np.exp(weight)
-                          for _, weight, _ in results))
+      # NB(Jiayuan):: use logsumexp for numeric stability.
+      score += logsumexp([w for _, w, _ in results])
+      # score += np.log(sum(np.exp(weight)
+      #                     for _, weight, _ in results))
 
       return score
 
@@ -883,7 +885,8 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
     candidate_queue = UniquePriorityQueue(maxsize=queue_limit)
 
     token_combs = list(itertools.combinations(tokens, depth))
-    for token_comb in tqdm(token_combs, desc="Token combinations"):
+    # for token_comb in tqdm(token_combs, desc="Token combinations"):
+    for token_comb in token_combs:
       token_syntaxes = [list(candidate_syntaxes[token].support) for token in token_comb]
       for syntax_comb in tqdm(itertools.product(*token_syntaxes),
                               total=np.prod(list(map(len, token_syntaxes))),
@@ -909,6 +912,7 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
                               total=n_expr_combs,
                               desc="Expressions"):
           # Compute likelihood of this joint syntax--semantics assignment.
+          # TODO(Jiayuan Mao @ 04/08): += logp? or += p?
           likelihood = 0.0
           for result in results:
             # Swap in semantic values for each token.
@@ -931,7 +935,7 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
 
             # Add category priors.
             log_prior = sum(np.log(weight) for weight in syntax_weights)
-            joint_score = log_prior + np.log(likelihood)
+            joint_score = log_prior + logp
             if joint_score == -np.inf:
               # Zero probability. Skip.
               continue
@@ -1003,6 +1007,7 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
 
   candidates = sorted(ranked_candidates.queue, key=lambda item: -item[0])
   new_entries = {token: Counter() for token in query_tokens}
+
   # Calculate marginal p(syntax, meaning | sentence) for each token.
   for logp, (tokens, syntaxes, meanings) in candidates:
     for token, syntax, meaning in zip(tokens, syntaxes, meanings):
@@ -1021,9 +1026,24 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
 
       L.info("Inferred %i novel entries for token %s:", len(candidates), token)
       for entry, weight in sorted(candidates.items(), key=lambda x: x[1], reverse=True):
-        L.info("%.4f %s", weight / total_mass * beta, entry)
+        lex.ontology.register_expressions([entry[1]])
+        # TODO(Jiayuan Mao @ 04/10): bring this log back for NSCL.
+        L.info('Induce new entries for token {}: syntax: {} semantics: {}'.format(token, syntax, meaning))
+        L.info("Weight: %.4f %s", weight / total_mass * beta, entry)
 
   return lex
+
+
+def augment_lexicon_nscl(
+    old_lex, query_tokens, query_token_syntaxes,
+    sentence, ontology, model, likelihood_fns,
+    **augment_kwargs):
+
+  return augment_lexicon(
+        old_lex, query_tokens, query_token_syntaxes,
+        sentence, ontology, model, likelihood_fns,
+        **augment_kwargs
+  )
 
 
 def augment_lexicon_distant(old_lex, query_tokens, query_token_syntaxes,

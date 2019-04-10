@@ -4,10 +4,11 @@ Structured perceptron algorithm for learning CCG weights.
 
 from collections import Counter
 import logging
+import functools
 import numpy as np
 
 from pyccg import chart
-from pyccg.util import softmax, NoParsesError
+from pyccg.util import softmax, NoParsesError, NoParsesSyntaxError
 
 L = logging.getLogger(__name__)
 
@@ -64,7 +65,7 @@ def update_perceptron(lexicon, sentence, model, success_fn,
   norm = 0.0
   weighted_results = parser.parse(sentence, return_aux=True)
   if not weighted_results:
-    raise NoParsesError("No successful parses computed.", sentence)
+    raise NoParsesSyntaxError("No successful parses computed.", sentence)
 
   max_score, max_incorrect_score = -np.inf, -np.inf
   correct_results, incorrect_results = [], []
@@ -88,7 +89,7 @@ def update_perceptron(lexicon, sentence, model, success_fn,
   if not correct_results:
     raise NoParsesError("No parses derived are successful.", sentence)
   elif not incorrect_results:
-    L.warning("No incorrect parses. Skipping update.")
+    # L.warning("No incorrect parses. Skipping update.")
     return weighted_results, 0.0
 
   # Sort results by descending parse score.
@@ -133,32 +134,42 @@ def update_perceptron(lexicon, sentence, model, success_fn,
   return weighted_results, norm
 
 
-def update_perceptron_distant(lexicon, sentence, model, answer,
-                              **update_perceptron_kwargs):
-  def success_fn(parse_result, model):
-    root_token, _ = parse_result.label()
+def _update_perceptron_distant_success_fn(parse_result, model, answer):
+  root_token, _ = parse_result.label()
+  L.debug('Semantics: {}; answer: {}; groundtruth: {}.'.format(root_token.semantics(), model.evaluate(root_token.semantics()), answer))
 
-    try:
-      if hasattr(model, "evaluate_and_score"):
-        pred_answer, answer_score = model.evaluate_and_score(root_token.semantics(), answer)
-      else:
-        pred_answer = model.evaluate(root_token.semantics())
-        answer_score = 0.0
-
+  answer_score = 0.0
+  try:
+    if hasattr(model, "evaluate_and_score"):
+      success, answer_score = model.evaluate_and_score(root_token.semantics(), answer)
+    else:
+      pred_answer = model.evaluate(root_token.semantics())
       success = pred_answer == answer
-    except (TypeError, AttributeError) as e:
-      # Type inconsistency. TODO catch this in the iter_expression
-      # stage, or typecheck before evaluating.
-      success = False
-    except AssertionError as e:
-      # Precondition of semantics failed to pass.
-      success = False
 
-    return success, answer_score
+  except (TypeError, AttributeError) as e:
+    # Type inconsistency. TODO catch this in the iter_expression
+    # stage, or typecheck before evaluating.
+    success = False
+  except AssertionError as e:
+    # Precondition of semantics failed to pass.
+    success = False
+
+  return success, answer_score
+
+def update_perceptron_nscl(lexicon, sentence, model, answer,
+                              **update_perceptron_kwargs):
 
   L.debug("Desired answer: %s", answer)
-  return update_perceptron(lexicon, sentence, model, success_fn,
-                           **update_perceptron_kwargs)
+  success_fn = functools.partial(_update_perceptron_distant_success_fn, answer=answer)
+  return update_perceptron(lexicon, sentence, model, success_fn, **update_perceptron_kwargs)
+
+
+def update_perceptron_distant(lexicon, sentence, model, answer,
+                              **update_perceptron_kwargs):
+
+  L.debug("Desired answer: %s", answer)
+  success_fn = functools.partial(_update_perceptron_distant_success_fn, answer=answer)
+  return update_perceptron(lexicon, sentence, model, success_fn, **update_perceptron_kwargs)
 
 
 def update_perceptron_cross_situational(lexicon, sentence, model,
