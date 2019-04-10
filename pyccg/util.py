@@ -249,5 +249,6 @@ def trange(*args, enabled=None, **kwargs):
   from tqdm import trange as trange_
   if enabled:
     return tqdm_(iterable, *args, **kwargs)
-  return range(*args, **kwargs)
+  # NB(Jiayuan): range takes no keyward arguments.
+  return range(*args)
 
