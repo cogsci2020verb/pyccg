@@ -887,6 +887,7 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
     token_combs = list(itertools.combinations(tokens, depth))
     # for token_comb in tqdm(token_combs, desc="Token combinations"):
     for token_comb in token_combs:
+      # TODO(Jiayuan Mao @ 04/10): if there are multiple words to be induced at the same time, there will be a bug for use_unused_concepts.
       token_syntaxes = [list(candidate_syntaxes[token].support) for token in token_comb]
       for syntax_comb in tqdm(itertools.product(*token_syntaxes),
                               total=np.prod(list(map(len, token_syntaxes))),
@@ -1028,6 +1029,7 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
       for entry, weight in sorted(candidates.items(), key=lambda x: x[1], reverse=True):
         lex.ontology.register_expressions([entry[1]])
         # TODO(Jiayuan Mao @ 04/10): bring this log back for NSCL.
+        print('Induce new entries for token {}: syntax: {} semantics: {}'.format(token, syntax, meaning))
         L.info('Induce new entries for token {}: syntax: {} semantics: {}'.format(token, syntax, meaning))
         L.info("Weight: %.4f %s", weight / total_mass * beta, entry)
 

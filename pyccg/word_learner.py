@@ -269,7 +269,9 @@ class WordLearner(object):
       except NoParsesError:
         return []
     except NoParsesError:
-        return []
+      # TODO(Jiayuan Mao @ 04/10): add handler for NoParsesError, meaning that there is no parses being able to
+      # answer the question correctly.
+      return []
 
     if self.prune_entries is not None:
       prune_count = self.lexicon.prune(max_entries=self.prune_entries)
