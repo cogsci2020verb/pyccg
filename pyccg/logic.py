@@ -1947,11 +1947,11 @@ class ConstantSystem(object):
     self._used = {const.name: False for const in self.constants}
     self.mark_used_expressions(expressions)
 
-  def make_new_constant(self, type_request=None, newly_used_constants_expr=None):
+  def make_new_constant(self, type_request=None, unused_constants_blacklist=None):
     unused = [
       name for name, v in self._used.items() if (
         (not v) and
-        (newly_used_constants_expr is None or name not in newly_used_constants_expr) and
+        (unused_constants_blacklist is None or name not in unused_constants_blacklist) and
         (type_request is None or self.constants_dict[name].type.matches(type_request))
       )
     ]
@@ -1959,13 +1959,20 @@ class ConstantSystem(object):
       raise ValueError('cannot find unused constants of type: {}'.format(str(type_request)))
     return self.constants_dict[unused[0]]
 
-  def iter_new_constants(self, type_request=None, newly_used_constants_expr=None):
-    if newly_used_constants_expr is not None:
-      for name in newly_used_constants_expr:
-        if name in self.constants_dict:
-          if type_request is None or self.constants_dict[name].type.matches(type_request):
-            yield self.constants_dict[name]
-    yield self.make_new_constant(type_request=type_request, newly_used_constants_expr=newly_used_constants_expr)
+  def iter_new_constants(self, type_request=None, unused_constants_whitelist=None, unused_constants_blacklist=None):
+    unused_constants_whitelist = frozenset(unused_constants_whitelist or [])
+    unused_constants_blacklist = frozenset(unused_constants_blacklist or [])
+    for name in unused_constants_whitelist:
+      # TODO(Jiayuan Mao @ 04/11): add strict check.
+      if name in self.constants_dict:
+        if type_request is None or self.constants_dict[name].type.matches(type_request):
+          yield self.constants_dict[name]
+
+    # make a "complete new" constant.
+    yield self.make_new_constant(
+        type_request=type_request,
+        unused_constants_blacklist=unused_constants_whitelist | unused_constants_blacklist
+    )
 
 
 # Wrapper for a typed function.
@@ -2262,7 +2269,9 @@ class Ontology(object):
   @listify
   def _iter_expressions_inner(self, max_depth, bound_vars,
                               type_request=None, function_weights=None,
-                              use_unused_constants=False, newly_used_constants_expr=None):
+                              use_unused_constants=False,
+                              unused_constants_whitelist=None,
+                              unused_constants_blacklist=None):
     """
     Enumerate all legal expressions.
 
@@ -2277,7 +2286,7 @@ class Ontology(object):
       function_weights: Override for function weights to determine the order in
         which we consider proposing function application expressions.
       use_unused_constants: If true, always use unused constants.
-      newly_used_constants_expr: If not None, a set of constants (by name),
+      unused_constants_whitelist: If not None, a set of constants (by name),
         all newly used constants for the current expression.
     """
     if max_depth == 0:
@@ -2287,7 +2296,8 @@ class Ontology(object):
       # semantics
       return
 
-    newly_used_constants_expr = frozenset(newly_used_constants_expr or [])
+    unused_constants_whitelist = frozenset(unused_constants_whitelist or [])
+    unused_constants_blacklist = frozenset(unused_constants_blacklist or [])
 
     for expr_type in self.EXPR_TYPES:
       if expr_type == ApplicationExpression:
@@ -2317,7 +2327,7 @@ class Ontology(object):
               # print("\t" * (6 - max_depth), fn, fn.arg_types)
               all_arg_type_requests = list(fn.arg_types)
 
-              def product_sub_args(i, ret, nuce):
+              def product_sub_args(i, ret, whitelist):
                 if i >= len(all_arg_type_requests):
                   yield ret
                   return
@@ -2328,12 +2338,13 @@ class Ontology(object):
                                                        type_request=arg_type_request,
                                                        function_weights=function_weights,
                                                        use_unused_constants=use_unused_constants,
-                                                       newly_used_constants_expr=frozenset(nuce))
+                                                       unused_constants_whitelist=frozenset(whitelist),
+                                                       unused_constants_blacklist=unused_constants_blacklist)
                 for expr in results:
-                  new_nuce = nuce | {c.name for c in expr.constants()}
-                  yield from product_sub_args(i + 1, ret + (expr, ), new_nuce)
+                  new_whitelist = whitelist | {c.name for c in expr.constants()}
+                  yield from product_sub_args(i + 1, ret + (expr, ), new_whitelist)
 
-              for arg_combs in product_sub_args(0, tuple(), newly_used_constants_expr):
+              for arg_combs in product_sub_args(0, tuple(), unused_constants_whitelist):
                 candidate = make_application(fn.name, arg_combs)
                 valid = self._valid_application_expr(candidate)
                 # print("\t" * (6 - max_depth + 1), "valid %s? %s" % (candidate, valid))
@@ -2365,7 +2376,8 @@ class Ontology(object):
                                                    type_request=subexpr_type_request,
                                                    function_weights=function_weights,
                                                    use_unused_constants=use_unused_constants,
-                                                   newly_used_constants_expr=newly_used_constants_expr)
+                                                   unused_constants_whitelist=unused_constants_whitelist,
+                                                   unused_constants_blacklist=unused_constants_blacklist)
 
             for expr in results:
               candidate = expr
@@ -2398,7 +2410,8 @@ class Ontology(object):
           try:
             for constant in self.constant_system.iter_new_constants(
                 type_request=type_request,
-                newly_used_constants_expr=newly_used_constants_expr
+                unused_constants_whitelist=unused_constants_whitelist,
+                unused_constants_blacklist=unused_constants_blacklist
             ):
 
               yield ConstantExpression(constant)

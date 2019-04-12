@@ -237,7 +237,7 @@ set_tqdm_enabled.value = True
 def tqdm(iterable, *args, enabled=None, **kwargs):
   if enabled is None:
     enabled = set_tqdm_enabled.value
-  from tqdm import tqdm as tqmd_
+  from tqdm import tqdm as tqdm_
   if enabled:
     return tqdm_(iterable, *args, **kwargs)
   return iterable
@@ -248,7 +248,7 @@ def trange(*args, enabled=None, **kwargs):
     enabled = set_tqdm_enabled.value
   from tqdm import trange as trange_
   if enabled:
-    return tqdm_(iterable, *args, **kwargs)
+    return trange_(*args, **kwargs)
   # NB(Jiayuan): range takes no keyward arguments.
   return range(*args)
 

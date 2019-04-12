@@ -859,21 +859,44 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
   # for each category. Pre-calculate the necessary associations.
   category_sem_arities = lex.category_semantic_arities(soft_propagate_roots=True)
 
-  def iter_expressions_for_arity(arity, max_depth=3):
+  def iter_expressions_for_arity(arity, max_depth=3, blacklist=None):
     type_request = ontology.types[("e",) * (arity + 1)]
-    iter_expressions_args['max_depth'] = max_depth
-    iter_expressions_args['type_request'] = type_request
-    return ontology.iter_expressions(**iter_expressions_args)
+    kwargs = dict()
+    kwargs.update(iter_expressions_args)
+    assert 'type_request' not in kwargs
+    kwargs['type_request'] = type_request
+    assert 'unused_constants_blacklist' not in kwargs
+    kwargs['unused_constants_blacklist'] = blacklist
+    kwargs.setdefault('max_depth', max_depth)
+    return ontology.iter_expressions(**kwargs)
 
-  def iter_expressions_for_category(cat):
+  def iter_expressions_for_category(cat, blacklist=None):
     """
     Generate candidate semantic expressions for a lexical entry with the given
     syntactic category. (Forms type requests based on known associations
     between `cat` and semantic expressions.)
     """
     return itertools.chain.from_iterable(
-        iter_expressions_for_arity(arity)
+        iter_expressions_for_arity(arity, blacklist=blacklist)
         for arity in category_sem_arities[cat])
+
+  # for expr_comb in tqdm(itertools.product(*candidate_exprs),
+  def product_candidate_exprs(syntax_comb):
+    # NB(Jiayuan Mao @ 04/11): accelerate the iteration.
+    # TODO(Jiayuan Mao @ 04/11): do we need this? maybe the cache of iter_expressions can automatically handle this.
+    if (len(syntax_comb) == 1) or (not iter_expressions_args.get('use_unused_constants', False)):
+      candidate_exprs = tuple(list(iter_expressions_for_category(cat)) for cat in syntax_comb)
+      return list(itertools.product(*candidate_exprs))
+
+    def product(i, result, blacklist):
+      if i == len(syntax_comb):
+        yield result
+      cat = syntax_comb[i]
+      for expr in iter_expressions_for_category(cat):
+        new_blacklist = blacklist | {c.name for c in expr.constants()}
+        yield from product(i + 1, result + (expr, ), new_blacklist)
+
+    return list(product(0, tuple(), set()))
 
   # Shared dummy variables which is included in candidate semantic forms, to be
   # replaced by all candidate lexical expressions and evaluated.
@@ -906,14 +929,14 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
         category_parse_results[syntax_comb] = results
 
         # Now enumerate semantic forms.
-        candidate_exprs = tuple(list(iter_expressions_for_category(cat))
-                                for cat in syntax_comb)
-        n_expr_combs = np.prod(list(map(len, candidate_exprs)))
-        for expr_comb in tqdm(itertools.product(*candidate_exprs),
-                              total=n_expr_combs,
-                              desc="Expressions"):
+        # candidate_exprs = tuple(list(iter_expressions_for_category(cat))
+        #                         for cat in syntax_comb)
+        # n_expr_combs = np.prod(list(map(len, candidate_exprs)))
+        all_expr_combs = product_candidate_exprs(syntax_comb)
+        for expr_comb in tqdm(all_expr_combs, desc="Expressions"):
           # Compute likelihood of this joint syntax--semantics assignment.
           # TODO(Jiayuan Mao @ 04/08): += logp? or += p?
+          # Probably we can remove the following line?
           likelihood = 0.0
           for result in results:
             # Swap in semantic values for each token.
