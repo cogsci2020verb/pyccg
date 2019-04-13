@@ -75,7 +75,10 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     self._families = families
     self._entries = entries
 
-    self.ontology = ontology
+    # NB(Jiayuan Mao @ 04/13): make a copy of the ontology, so that we can register the used constants.
+    # TODO(Jiayuan Mao @ 04/13): is this the right way to do this?
+    self.ontology = ontology.clone()
+    self.ontology.override_registered_expressions({entry.semantics() for entries in self._entries.values() for entry in entries})
 
     self._derived_categories = {}
     self._derived_categories_by_base = defaultdict(set)
@@ -888,15 +891,13 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
       candidate_exprs = tuple(list(iter_expressions_for_category(cat)) for cat in syntax_comb)
       return list(itertools.product(*candidate_exprs))
 
-    def product(i, result, blacklist):
-      if i == len(syntax_comb):
-        yield result
-      cat = syntax_comb[i]
-      for expr in iter_expressions_for_category(cat):
-        new_blacklist = blacklist | {c.name for c in expr.constants()}
-        yield from product(i + 1, result + (expr, ), new_blacklist)
-
-    return list(product(0, tuple(), set()))
+    candidate_exprs = list()
+    black_list = set()
+    for i, cat in enumerate(syntax_comb):
+      this_candidate_exprs = list(iter_expressions_for_category(cat, frozenset(black_list)))
+      black_list |= {c.name for expr in this_candidate_exprs for c in expr.constants()}
+      candidate_exprs.append(this_candidate_exprs)
+    return list(itertools.product(*candidate_exprs))
 
   # Shared dummy variables which is included in candidate semantic forms, to be
   # replaced by all candidate lexical expressions and evaluated.

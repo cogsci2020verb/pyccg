@@ -2206,6 +2206,13 @@ class Ontology(object):
 
     self._prepare()
 
+  def clone(self, retain_constant_usage=False):
+    ret = deepcopy(self)
+
+    if not retain_constant_usage:
+      ret.constant_system.override_used_expressions(set())
+    return ret
+
   @property
   def constants(self):
     return self.constant_system.constants
