@@ -12,7 +12,7 @@ class NoParsesError(Exception):
   No parses were computed for the given sentence.
   """
   def __init__(self, message, sentence):
-    super().__init__(message)
+    super().__init__(message + ' Sentence: ' + str(sentence))
     self.sentence = sentence
 
 

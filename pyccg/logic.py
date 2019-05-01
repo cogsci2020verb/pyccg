@@ -2431,6 +2431,8 @@ class Ontology(object):
 
             yield ConstantExpression(constant)
       elif expr_type == FunctionVariableExpression:
+        # TODO(Jiayuan Mao @ 05/01): remove iter function variable expression.
+        return
         # NB we don't support enumerating bound variables with function types
         # right now -- the following only considers yielding fixed functions
         # from the ontology.
@@ -2683,7 +2685,6 @@ def compute_type_raised_semantics(semantics):
   return LambdaExpression(var, semantics)
 
 def compute_function_semantics(function, argument):
-  # print(function, argument, type(function), type(argument))
   return ApplicationExpression(function, argument).simplify()
 
 def compute_composition_semantics(function, argument):
