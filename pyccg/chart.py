@@ -1,12 +1,13 @@
+from copy import deepcopy
 import itertools
 
 from nltk.ccg import chart as nchart
-from nltk.ccg.combinator import *
 from nltk.parse.chart import AbstractChartRule, Chart, EdgeI
 from nltk.tree import Tree
 import numpy as np
 
-from pyccg.lexicon import Token
+from pyccg import Token
+from pyccg.combinator import *
 from pyccg.logic import *
 
 
@@ -17,11 +18,12 @@ printCCGDerivation = nchart.printCCGDerivation
 # A number of the properties of the EdgeI interface don't
 # transfer well to CCGs, however.
 class CCGEdge(EdgeI):
-    def __init__(self, span, categ, rule):
+    def __init__(self, span, categ, rule, semantics=None):
         self._span = span
         self._categ = categ
         self._rule = rule
-        self._comparison_key = (span, categ, rule)
+        self._semantics = semantics
+        self._comparison_key = (span, categ, rule, semantics)
 
     # Accessors
     def lhs(self): return self._categ
@@ -37,6 +39,7 @@ class CCGEdge(EdgeI):
 
     def categ(self): return self._categ
     def rule(self): return self._rule
+    def semantics(self): return self._semantics
 
 class CCGLeafEdge(EdgeI):
     '''
@@ -62,10 +65,18 @@ class CCGLeafEdge(EdgeI):
 
     def token(self): return self._token
     def categ(self): return self._token.categ()
+    def semantics(self): return self._token.semantics()
     def leaf(self): return self._leaf
 
 
-class BinaryCombinatorRule(AbstractChartRule):
+class CCGChartRule(AbstractChartRule):
+
+  def set_ontology(self, ontology):
+    if hasattr(self, "_combinator"):
+      self._combinator.set_ontology(ontology)
+
+
+class BinaryCombinatorRule(CCGChartRule):
     '''
     Class implementing application of a binary combinator to a chart.
     Takes the directed combinator to apply.
@@ -82,9 +93,11 @@ class BinaryCombinatorRule(AbstractChartRule):
 
         # Check if the two edges are permitted to combine.
         # If so, generate the corresponding edge.
-        if self._combinator.can_combine(left_edge.categ(),right_edge.categ()):
-            for res in self._combinator.combine(left_edge.categ(), right_edge.categ()):
-                new_edge = CCGEdge(span=(left_edge.start(), right_edge.end()),categ=res,rule=self._combinator)
+        if self._combinator.can_combine(left_edge, right_edge):
+            for categ, semantics in self._combinator.combine(left_edge, right_edge):
+                new_edge = CCGEdge(span=(left_edge.start(), right_edge.end()),
+                                   categ=categ, semantics=semantics,
+                                   rule=self._combinator)
                 if chart.insert(new_edge,(left_edge,right_edge)):
                     yield new_edge
 
@@ -94,7 +107,7 @@ class BinaryCombinatorRule(AbstractChartRule):
 
 # Type-raising must be handled slightly differently to the other rules, as the
 # resulting rules only span a single edge, rather than both edges.
-class ForwardTypeRaiseRule(AbstractChartRule):
+class ForwardTypeRaiseRule(CCGChartRule):
     '''
     Class for applying forward type raising
     '''
@@ -106,15 +119,16 @@ class ForwardTypeRaiseRule(AbstractChartRule):
         if not (left_edge.end() == right_edge.start()):
             return
 
-        for res in self._combinator.combine(left_edge.categ(), right_edge.categ()):
-            new_edge = CCGEdge(span=left_edge.span(),categ=res,rule=self._combinator)
+        for categ, semantics in self._combinator.combine(left_edge, right_edge):
+            new_edge = CCGEdge(span=left_edge.span(), categ=categ, semantics=semantics,
+                               rule=self._combinator)
             if chart.insert(new_edge,(left_edge,)):
                 yield new_edge
 
     def __str__(self):
         return "%s" % self._combinator
 
-class BackwardTypeRaiseRule(AbstractChartRule):
+class BackwardTypeRaiseRule(CCGChartRule):
     '''
     Class for applying backward type raising.
     '''
@@ -126,8 +140,9 @@ class BackwardTypeRaiseRule(AbstractChartRule):
         if not (left_edge.end() == right_edge.start()):
             return
 
-        for res in self._combinator.combine(left_edge.categ(), right_edge.categ()):
-            new_edge = CCGEdge(span=right_edge.span(),categ=res,rule=self._combinator)
+        for categ, semantics in self._combinator.combine(left_edge, right_edge):
+            new_edge = CCGEdge(span=right_edge.span(), categ=categ, semantics=semantics,
+                               rule=self._combinator)
             if chart.insert(new_edge,(right_edge,)):
                 yield new_edge
 
@@ -176,35 +191,11 @@ class CCGChart(Chart):
       child_choices = [self._trees(cp, complete, memo, tree_class)
                        for cp in cpl]
       for children in itertools.product(*child_choices):
-        lhs = (Token(self._tokens[edge.start():edge.end()], edge.lhs(), compute_semantics(children, edge)), str(edge.rule()))
+        lhs = (Token(self._tokens[edge.start():edge.end()], edge.lhs(), edge.semantics()), str(edge.rule()))
         trees.append(tree_class(lhs, children))
 
     memo[edge] = trees
     return trees
-
-
-def compute_semantics(children, edge):
-  if children[0].label()[0].semantics() is None:
-    return None
-
-  if len(children) is 2:
-    if isinstance(edge.rule(), BackwardCombinator):
-      children = [children[1],children[0]]
-
-    combinator = edge.rule()._combinator
-    function = children[0].label()[0].semantics()
-    argument = children[1].label()[0].semantics()
-
-    if isinstance(combinator, UndirectedFunctionApplication):
-      return compute_function_semantics(function, argument)
-    elif isinstance(combinator, UndirectedComposition):
-      return compute_composition_semantics(function, argument)
-    elif isinstance(combinator, UndirectedSubstitution):
-      return compute_substitution_semantics(function, argument)
-    else:
-      raise AssertionError('Unsupported combinator \'' + combinator + '\'')
-  else:
-    return compute_type_raised_semantics(children[0].label()[0].semantics())
 
 
 class WeightedCCGChartParser(nchart.CCGChartParser):
@@ -222,6 +213,12 @@ class WeightedCCGChartParser(nchart.CCGChartParser):
   def __init__(self, lexicon, ruleset=None, *args, **kwargs):
     if ruleset is None:
       ruleset = ApplicationRuleSet
+
+    if lexicon.ontology is not None:
+      ruleset = deepcopy(ruleset)
+      for rule in ruleset:
+        rule.set_ontology(lexicon.ontology)
+
     super().__init__(lexicon, ruleset, *args, **kwargs)
 
   def _parse_inner(self, chart):

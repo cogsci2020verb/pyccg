@@ -592,7 +592,7 @@ class Variable(object):
     return "Variable('%s')" % self.name
 
 
-def unique_variable(pattern=None, ignore=None):
+def unique_variable(pattern=None, ignore=None, type=None):
     """
     Return a new, unique variable.
 
@@ -614,9 +614,9 @@ def unique_variable(pattern=None, ignore=None):
     else:
         prefix = 'z'
 
-    v = Variable("%s%s" % (prefix, _counter.get()))
+    v = Variable("%s%s" % (prefix, _counter.get()), type=type)
     while ignore is not None and v in ignore:
-        v = Variable("%s%s" % (prefix, _counter.get()))
+        v = Variable("%s%s" % (prefix, _counter.get()), type=type)
     return v
 
 def skolem_function(univ_scope=None):
@@ -1088,6 +1088,13 @@ class Expression(SubstituteBindingsI):
         return self.visit(lambda e: e.free(),
                           lambda parts: functools.reduce(operator.or_, parts, set()))
 
+    def bound(self):
+        """
+        Return a set of all the bound variables.
+        """
+        return self.visit(lambda e: e.bound(),
+                          lambda parts: functools.reduce(operator.concat, parts, []))
+
     def constants(self):
         """
         Return a set of individual constants (non-predicates).
@@ -1359,6 +1366,9 @@ class AbstractVariableExpression(Expression):
         """:see: Expression.predicates()"""
         return set()
 
+    def bound(self):
+        return []
+
     def __eq__(self, other):
         """Allow equality between instances of ``AbstractVariableExpression``
         subtypes."""
@@ -1467,6 +1477,9 @@ class ConstantExpression(AbstractVariableExpression):
         """:see: Expression.free()"""
         return set()
 
+    def bound(self):
+        return []
+
     def constants(self):
         """:see: Expression.constants()"""
         return set([self.variable])
@@ -1539,6 +1552,9 @@ class VariableBinderExpression(Expression):
         """:see: Expression.free()"""
         return self.term.free() - set([self.variable])
 
+    def bound(self):
+        return self.term.bound() + [self.variable]
+
     def findtype(self, variable):
         """:see Expression.findtype()"""
         assert isinstance(variable, Variable), "%s is not a Variable" % variable
@@ -1578,8 +1594,8 @@ class VariableBinderExpression(Expression):
 class LambdaExpression(VariableBinderExpression):
     @property
     def type(self):
-        return ComplexType(self.variable.type,
-                           self.term.type)
+        return ComplexType(self.variable.type or ANY_TYPE,
+                           self.term.type or ANY_TYPE)
 
     def _set_type(self, other_type=ANY_TYPE, signature=None):
         """:see Expression._set_type()"""
@@ -2458,6 +2474,13 @@ class Ontology(object):
       type_signature = copy(type_signature)
       type_signature.update(extra_type_signature)
 
+    # First infer types of bound variables.
+    # TODO assumes variable names are unique
+    for variable in expr.bound():
+      var_type = self.infer_type(expr, variable.name)
+      variable.type = var_type
+      type_signature[variable.name] = var_type
+
     expr.typecheck(signature=type_signature)
 
   def register_expressions(self, expressions):
@@ -2494,7 +2517,11 @@ class Ontology(object):
             function_type = extra_types[fn_name]
           except KeyError:
             # No function information available. Ditch.
-            return self.types.ANY_TYPE
+            return ANY_TYPE
+
+        args = list(node.args)
+        if len(args) != len(function_type.flat) - 1:
+          raise InconsistentTypeHierarchyException("Function %s appears with the wrong arity" % fn_name)
 
         for i, arg in enumerate(node.args):
           visitor(arg)
@@ -2505,19 +2532,21 @@ class Ontology(object):
             apparent_types.add(function_type.flat[i])
           elif isinstance(arg, ApplicationExpression) and isinstance(arg.pred, FunctionVariableExpression) \
               and arg.pred.variable.name == variable_name:
-            arg_types = ((self.types.ANY_TYPE,) * len(arg.args))
+            arg_types = ((ANY_TYPE,) * len(arg.args))
             apparent_types.add(arg_types + (function_type.flat[i],))
       elif isinstance(node, LambdaExpression):
         visitor(node.term)
 
     visitor(expr)
     if len(apparent_types) > 1:
-      if len(apparent_types) == 2 and self.types.ANY_TYPE in apparent_types:
+      if len(apparent_types) == 2 and ANY_TYPE in apparent_types:
         # Good, just remove the AnyType.
-        apparent_types.remove(self.types.ANY_TYPE)
+        apparent_types.remove(ANY_TYPE)
       else:
         # TODO check type compatibility
         raise NotImplementedError("Multiple apparent types: %s" % apparent_types)
+    elif len(apparent_types) == 0:
+      return ANY_TYPE
 
     type_ret = next(iter(apparent_types))
     return self.types[type_ret]
@@ -2597,6 +2626,14 @@ class Ontology(object):
     if available_vars != bound_variables:
       return False
 
+    # Exclude unnecessarily curried expressions, e.g.
+    # `\x.exists(x)` (vs. `exists`)
+    if isinstance(body, ApplicationExpression) \
+        and all(isinstance(a, IndividualVariableExpression) for a in body.args):
+      arg_variables = [a.variable for a in body.args]
+      if arg_variables == bound_args:
+        return False
+
     # # Exclude exprs with simplistic bodies.
     # if isinstance(body, IndividualVariableExpression):
     #   return False
@@ -2664,6 +2701,45 @@ class Ontology(object):
 
     return inner(expr, [])
 
+  def unwrap_function(self, function):
+    """
+    Given a function of this ontology, return an "unwrapped" `LambdaExpression`
+    referencing that function. e.g.
+
+        unwrap_function("sphere") => \\x.sphere(x)
+    """
+    fn = self.functions_dict[function]
+    variables = [unique_variable(type=type) for type in fn.arg_types]
+
+    if len(variables) > 0:
+      # TODO make sure applicationexpression is properly typed
+      core = make_application(function, [IndividualVariableExpression(v) for v in variables])
+      ret = core
+      for variable in variables[::-1]:
+        ret = LambdaExpression(variable, ret)
+      return ret.normalize()
+
+    return ConstantExpression(Variable(function))
+
+  def unwrap_base_functions(self, expr):
+    """
+    Given an Expression, unwrap all functions in base form.
+    """
+    # TODO extract the more general replacement logic here
+    if isinstance(expr, (ConstantExpression, FunctionVariableExpression)) \
+        and expr.variable.name in self.functions_dict:
+      return self.unwrap_function(expr.variable.name)
+    elif isinstance(expr, LambdaExpression):
+      new = self.unwrap_base_functions(expr.term)
+      if new != expr.term:
+        expr = LambdaExpression(expr.variable, expr.term)
+    elif isinstance(expr, ApplicationExpression):
+      expr.argument = self.unwrap_base_functions(expr.argument)
+      if isinstance(expr.function, ApplicationExpression):
+        expr.function = self.unwrap_base_functions(expr.function)
+
+    return expr
+
 
 def compute_type_raised_semantics(semantics):
   core = deepcopy(semantics)
@@ -2683,20 +2759,4 @@ def compute_type_raised_semantics(semantics):
     semantics = core
 
   return LambdaExpression(var, semantics)
-
-def compute_function_semantics(function, argument):
-  return ApplicationExpression(function, argument).simplify()
-
-def compute_composition_semantics(function, argument):
-  assert isinstance(argument, LambdaExpression), "`" + str(argument) + "` must be a lambda expression"
-  return LambdaExpression(argument.variable, ApplicationExpression(function, argument.term).simplify())
-
-def compute_substitution_semantics(function, argument):
-  assert isinstance(function, LambdaExpression) and isinstance(function.term, LambdaExpression), "`" + str(function) + "` must be a lambda expression with 2 arguments"
-  assert isinstance(argument, LambdaExpression), "`" + str(argument) + "` must be a lambda expression"
-
-  new_argument = ApplicationExpression(argument, VariableExpression(function.variable)).simplify()
-  new_term = ApplicationExpression(function.term, new_argument).simplify()
-
-  return LambdaExpression(function.variable, new_term)
 

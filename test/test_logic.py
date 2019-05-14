@@ -105,7 +105,7 @@ def test_iter_expressions():
      ()),
     (3, "Consider both argument orders",
      ((("boolean", "boolean", "boolean"), r"\z2 z1.and_(z1,z2)"),
-      (("boolean", "boolean", "boolean"), r"\z2 z1.and_(z2,z1)")),
+      (("boolean", "boolean", "boolean"), r"and_")),
      ()),
     (3, "Consider both argument orders for three-place function",
      ((("obj", "obj", "boolean"), r"\z2 z1.threeplace(z1,z2,baz)"),
@@ -120,8 +120,8 @@ def test_iter_expressions():
     (3, "Enforce type constraints on lambda expressions as arguments",
      (),
      ((("boolean"), r"and_(\z1.z1,\z1.z1)",),)),
-    (4, "Support passing lambdas as function arguments",
-     ((("boolean"), r"invented_1(\z1.foo(z1),qux)",),),
+    (5, "Support passing lambdas as function arguments",
+     ((("boolean"), r"invented_1(\z1.not_(foo(z1)),qux)",),),
      ()),
     (3, "Support abstract type requests",
       ((("boolean", "boolean", "boolean"), r"and_"),
@@ -129,6 +129,9 @@ def test_iter_expressions():
        (("e", "e", "e"), r"and_"),
        (("e", "e"), r"\z1.and_(z1,z1)"),),
       ()),
+    (3, r"Don't enumerate syntactically equivalent `\x.f(x)` and `f`",
+      ((("e", "e"), r"not_"),),
+      ((("e", "e"), r"\z1.not_(z1)"),)),
   ]
 
   def do_case(max_depth, msg, assert_in, assert_not_in):
@@ -171,7 +174,7 @@ def test_iter_expressions_after_update():
 
   expressions = set(ontology.iter_expressions(max_depth=3, type_request=ontology.types["obj", "boolean"]))
   expression_strs = sorted(map(str, expressions))
-  assert r"\z1.newfunction(z1)" in expression_strs
+  assert r"newfunction" in expression_strs
 
 
 def test_as_ec_sexpr():
@@ -310,3 +313,25 @@ def test_infer_type():
 
   for expr, query_variable, expected_type in cases:
     yield do_test, expr, query_variable, expected_type
+
+
+def test_expression_bound():
+  eq_(set(x.name for x in Expression.fromstring(r"\x.foo(x)").bound()),
+      {"x"})
+  eq_(set(x.name for x in Expression.fromstring(r"\x y.foo(x,y)").bound()),
+      {"x", "y"})
+
+
+def test_unwrap_function():
+  ontology = _make_mock_ontology()
+
+  eq_(str(ontology.unwrap_function("sphere")), r"\z1.sphere(z1)")
+
+
+def test_unwrap_base_functions():
+  ontology = _make_mock_ontology()
+
+  eq_(str(ontology.unwrap_base_functions(Expression.fromstring(r"unique(sphere)"))),
+      r"unique(\z1.sphere(z1))")
+  eq_(str(ontology.unwrap_base_functions(Expression.fromstring(r"cmp_pos(ax_x,unique(sphere),unique(cube))"))),
+      r"cmp_pos(ax_x,unique(\z1.sphere(z1)),unique(\z1.cube(z1)))")

@@ -16,9 +16,8 @@ from nltk.ccg.api import PrimitiveCategory, FunctionalCategory, AbstractCCGCateg
 import numpy as np
 from scipy.special import logsumexp
 
-from pyccg import chart
-from pyccg.combinator import category_search_replace, \
-    type_raised_category_search_replace
+from pyccg import chart, Token
+from pyccg.combinator import category_search_replace
 from pyccg import logic as l
 from pyccg.util import ConditionalDistribution, Distribution, UniquePriorityQueue, \
     NoParsesError, tuple_unordered, tqdm, trange
@@ -129,6 +128,10 @@ class Lexicon(ccg_lexicon.CCGLexicon):
             else:
               semantics = l.Expression.fromstring(ccg_lexicon.SEMANTICS_RE.match(semantics_str).groups()[0])
 
+              # Assign types.
+              if ontology is not None:
+                ontology.typecheck(semantics)
+
           weight = float(weight[1:-1]) if weight is not None else default_weight
 
           # Word definition
@@ -136,6 +139,38 @@ class Lexicon(ccg_lexicon.CCGLexicon):
           entries[ident].append(Token(ident, cat, semantics, weight=weight))
     return cls(starts, primitives, families, entries,
                ontology=ontology)
+
+  def get_entries(self, word):
+    return self._entries.get(word, [])
+
+  def set_entries(self, word, entries):
+    """
+    Set the list of entries for a wordform `word`.
+
+    Arguments:
+      word: String wordform
+      entries: List of `(category, semantics, weight)` tuples
+    """
+    self._entries[word] = []
+    for category, semantics, weight in entries:
+      self.add_entry(word, category, semantics=semantics, weight=weight)
+
+  def add_entry(self, word, category, semantics=None, weight=None):
+    """
+    Add a `Token` entry for the wordform `word`.
+
+    Arguments:
+      word: String wordform
+      category: Syntactic category
+      semantics: Meaning representation
+      weight: Float weight
+    """
+    # Typecheck and assign types in semantic representation.
+    if semantics is not None and self.ontology is not None:
+      self.ontology.typecheck(semantics)
+
+    token = Token(word, category, semantics=semantics, weight=weight)
+    self._entries[word].append(token)
 
   def __eq__(self, other):
     return isinstance(other, Lexicon) and self._starts == other._starts \
@@ -486,41 +521,6 @@ class DerivedCategory(PrimitiveCategory):
     return "%s{%s}{%s}" % (self.name, self.base, self.source_name)
 
 
-class Token(object):
-
-  def __init__(self, token, categ, semantics=None, weight=0.001):
-    self._token = token
-    self._categ = categ
-    self._weight = weight
-    self._semantics = semantics
-
-  def categ(self):
-    return self._categ
-
-  def weight(self):
-    return self._weight
-
-  def semantics(self):
-    return self._semantics
-
-  def clone(self):
-    return Token(self._token, self._categ, self._semantics, self._weight)
-
-  def __str__(self):
-    return "Token(%s => %s%s)" % (self._token, self._categ,
-                                  " {%s}" % self._semantics if self._semantics else "")
-
-  __repr__ = __str__
-
-  def __eq__(self, other):
-    return isinstance(other, Token) and self.categ() == other.categ() \
-        and self.weight() == other.weight() \
-        and self.semantics() == other.semantics()
-
-  def __hash__(self):
-    return hash((self._token, self._categ, self._weight, self._semantics))
-
-
 def get_semantic_arity(category, arity_overrides=None):
   """
   Get the expected arity of a semantic form corresponding to some syntactic
@@ -597,7 +597,7 @@ def get_candidate_categories(lex, tokens, sentence, smooth=1e-3):
 
   # Remove entries for the queried tokens.
   for token in tokens:
-    lex._entries[token] = []
+    lex.set_entries(token, [])
 
   category_prior = lex.observed_category_distribution(
       exclude_tokens=set(tokens), soft_propagate_roots=True)
@@ -614,7 +614,7 @@ def get_candidate_categories(lex, tokens, sentence, smooth=1e-3):
     """
 
     for token, category in zip(tokens, cat_assignment):
-      lex._entries[token] = [Token(token, category)]
+      lex.set_entries(token, [(category, None, 0.001)])
 
     # Attempt a parse.
     results = chart.WeightedCCGChartParser(lex, chart.DefaultRuleSet) \
@@ -678,7 +678,7 @@ def attempt_candidate_parse(lexicon, tokens, candidate_categories,
 
   lexicon = lexicon.clone()
   for token, syntax in zip(tokens, candidate_categories):
-    lexicon._entries[token] = [Token(token, syntax, sub_exprs[token])]
+    lexicon.set_entries(token, [(syntax, sub_exprs[token], 1.0)])
 
   parse_results = []
 
@@ -1046,8 +1046,9 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
   for token, candidates in new_entries.items():
     total_mass = sum(candidates.values())
     if len(candidates) > 0:
-      lex._entries[token] = [Token(token, syntax, meaning, weight / total_mass * beta)
-                            for (syntax, meaning), weight in candidates.items()]
+      lex.set_entries(token,
+                      [(syntax, meaning, weight / total_mass * beta)
+                       for (syntax, meaning), weight in candidates.items()])
 
       L.info("Inferred %i novel entries for token %s:", len(candidates), token)
       for entry, weight in sorted(candidates.items(), key=lambda x: x[1], reverse=True):
@@ -1149,6 +1150,7 @@ def filter_lexicon_entry(lexicon, entry, sentence, lf):
     raise ValueError("no consistent interpretations of word found.")
 
   new_lex = lexicon.clone()
-  new_lex._entries[entry] = [cand.token() for cand in valid_cands]
+  new_lex.set_entries(entry, [(cand.token().categ(), cand.token().semantics(), cand.token().weight())
+                              for cand in valid_cands])
 
   return new_lex
