@@ -949,8 +949,10 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
 
             try:
               lex.ontology.typecheck(sentence_semantics)
-            except l.TypeException:
+            except l.TypeException as exc:
               continue
+
+            # print('SUCCESS: ' + '; '.join([f'{t} => {str(s)} [{str(e)}]' for t, s, e in zip(token_comb, syntax_comb, expr_comb)]), sentence_semantics, sep='\n', end='\n' + '-'*120 + '\n')
 
             # Compute p(meaning | syntax, sentence, parse)
             logp = sum(likelihood_fn(token_comb, syntax_comb, expr_comb,
@@ -1054,8 +1056,8 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
       for entry, weight in sorted(candidates.items(), key=lambda x: x[1], reverse=True):
         lex.ontology.register_expressions([entry[1]])
         # TODO(Jiayuan Mao @ 04/10): bring this log back for NSCL.
-        print('Induce new entries for token {}: syntax: {} semantics: {}'.format(token, syntax, meaning))
-        L.info('Induce new entries for token {}: syntax: {} semantics: {}'.format(token, syntax, meaning))
+        print('Induce new entries for token {}: syntax: {} semantics: {}'.format(token, entry[0], entry[1]))
+        L.info('Induce new entries for token {}: syntax: {} semantics: {}'.format(token, entry[0], entry[1]))
         L.info("Weight: %.4f %s", weight / total_mass * beta, entry)
 
   return lex

@@ -306,6 +306,19 @@ class WeightedCCGChartParser(nchart.CCGChartParser):
         score += logp
       return score
 
+    # TODO(Jiayuan Mao @ 05/15): added by Jiayuan, typecheck the results.
+    def typecheck_parse(parse):
+        sentence_semantics = parse.label()[0].semantics()
+        if sentence_semantics is None:
+            return True
+        try:
+            self._lexicon.ontology.typecheck(sentence_semantics)
+        except l.TypeException:
+            return False
+        return True
+
+    results = [p for p in results if typecheck_parse(p)]
+
     results = sorted(results, key=score_parse, reverse=True)
     if not return_aux:
       return results

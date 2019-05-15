@@ -1944,6 +1944,9 @@ class ConstantSystem(object):
   def __init__(self, constants):
     self.constants = constants
     self.constants_dict = {const.name: const for const in self.constants}
+    self.constants_typedict = {}
+    for c in self.constants:
+      self.constants_typedict.setdefault(c.type, []).append(c)
     self._used = {const.name: False for const in self.constants}
     self._iter_new_constants_buffer = None
 
@@ -1964,16 +1967,21 @@ class ConstantSystem(object):
     self.mark_used_expressions(expressions)
 
   def make_new_constant(self, type_request=None, unused_constants_blacklist=None):
-    unused = [
-      name for name, v in self._used.items() if (
-        (not v) and
-        (unused_constants_blacklist is None or name not in unused_constants_blacklist) and
-        (type_request is None or self.constants_dict[name].type.matches(type_request))
-      )
-    ]
+    unused = list()
+    for const_type, const_list in self.constants_typedict.items():
+      if type_request is None or const_type.matches(type_request):
+        typed_unused = [
+          const for const in const_list if (
+            (not self._used[const.name]) and
+            (unused_constants_blacklist is None or const.name not in unused_constants_blacklist)
+          )
+        ]
+        if len(typed_unused) > 0:
+          unused.append(typed_unused[0])
+
     if len(unused) == 0:
       raise ValueError('cannot find unused constants of type: {}'.format(str(type_request)))
-    return self.constants_dict[unused[0]]
+    yield from unused
 
   def iter_new_constants(self, type_request=None, unused_constants_whitelist=None, unused_constants_blacklist=None):
     unused_constants_whitelist = frozenset(unused_constants_whitelist or [])
@@ -1985,7 +1993,7 @@ class ConstantSystem(object):
           yield self.constants_dict[name]
 
     # make a "complete new" constant.
-    yield self.make_new_constant(
+    yield from self.make_new_constant(
         type_request=type_request,
         unused_constants_blacklist=unused_constants_whitelist | unused_constants_blacklist
     )
@@ -2267,10 +2275,10 @@ class Ontology(object):
         assert function.arity == self.get_expr_arity(function.defn), function.name
 
   def add_constants(self, constants):
-    self._iter_expressions_inner.clear_cache()
+    self._clear_expression_cache()
 
-    self.constants = constants
-    self.constants_dict = {c.name: c for c in constants}
+    self.constant_system.constants = constants
+    self.constant_system.constants_dict = {c.name: c for c in constants}
 
   def _prepare(self):
     self._nltk_type_signature = self._make_nltk_type_signature()
@@ -2447,8 +2455,6 @@ class Ontology(object):
 
             yield ConstantExpression(constant)
       elif expr_type == FunctionVariableExpression:
-        # TODO(Jiayuan Mao @ 05/01): remove iter function variable expression.
-        return
         # NB we don't support enumerating bound variables with function types
         # right now -- the following only considers yielding fixed functions
         # from the ontology.
