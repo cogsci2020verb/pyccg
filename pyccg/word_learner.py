@@ -298,6 +298,7 @@ class WordLearner(object):
     update_perceptron_args = update_perceptron_args or {}
 
     kwargs = {"answer": answer}
+    augment_lexicon_args.update(kwargs)
     update_perceptron_args.update(kwargs)
 
     return self._update_with_example(

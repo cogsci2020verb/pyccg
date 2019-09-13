@@ -795,6 +795,13 @@ def build_distant_likelihood(answer):
   return likelihood_fn
 
 
+def build_typecheck_likelihood(answer):
+  def likelihood_fn(tokens, categories, exprs, sentence_parse, model):
+    return 0.0 if model.typecheck(sentence_parse, answer) else -np.inf
+
+  return likelihood_fn
+
+
 def likelihood_2afc(tokens, categories, exprs, sentence_parse, models):
   """
   0-1 likelihood function for the 2AFC paradigm, where an uttered
@@ -950,9 +957,10 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
             try:
               lex.ontology.typecheck(sentence_semantics)
             except l.TypeException as exc:
+              # print('FAIL: ' + '; '.join([f'{t} => {str(s)} [{str(e)}]' for t, s, e in zip(token_comb, syntax_comb, expr_comb)]), sentence_semantics, exc, sep='\n', end='\n' + '-'*120 + '\n')
               continue
 
-            # print('SUCCESS: ' + '; '.join([f'{t} => {str(s)} [{str(e)}]' for t, s, e in zip(token_comb, syntax_comb, expr_comb)]), sentence_semantics, sep='\n', end='\n' + '-'*120 + '\n')
+            print('SUCCESS: ' + '; '.join([f'{t} => {str(s)} [{str(e)}]' for t, s, e in zip(token_comb, syntax_comb, expr_comb)]), sentence_semantics, sep='\n', end='\n' + '-'*120 + '\n')
 
             # Compute p(meaning | syntax, sentence, parse)
             logp = sum(likelihood_fn(token_comb, syntax_comb, expr_comb,
@@ -1065,8 +1073,10 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
 
 def augment_lexicon_nscl(
     old_lex, query_tokens, query_token_syntaxes,
-    sentence, ontology, model, likelihood_fns,
+    sentence, ontology, model, likelihood_fns, answer,
     **augment_kwargs):
+
+  likelihood_fns = (build_typecheck_likelihood(answer),) + tuple(likelihood_fns)
 
   return augment_lexicon(
         old_lex, query_tokens, query_token_syntaxes,
