@@ -2358,7 +2358,7 @@ class Ontology(object):
               # print("\t" * (6 - max_depth), fn, fn.arg_types)
               all_arg_type_requests = list(fn.arg_types)
 
-              def product_sub_args(i, ret, whitelist):
+              def product_sub_args(i, ret, blacklist, whitelist):
                 if i >= len(all_arg_type_requests):
                   yield ret
                   return
@@ -2370,12 +2370,16 @@ class Ontology(object):
                                                        function_weights=function_weights,
                                                        use_unused_constants=use_unused_constants,
                                                        unused_constants_whitelist=frozenset(whitelist),
-                                                       unused_constants_blacklist=unused_constants_blacklist)
+                                                       unused_constants_blacklist=frozenset(blacklist))
+
+                new_blacklist = blacklist
                 for expr in results:
                   new_whitelist = whitelist | {c.name for c in expr.constants()}
-                  yield from product_sub_args(i + 1, ret + (expr, ), new_whitelist)
+                  for sub_expr in product_sub_args(i + 1, ret + (expr, ), new_blacklist, new_whitelist):
+                    yield sub_expr
+                    new_blacklist = new_blacklist | {c.name for arg in sub_expr for c in arg.constants()}
 
-              for arg_combs in product_sub_args(0, tuple(), unused_constants_whitelist):
+              for arg_combs in product_sub_args(0, tuple(), unused_constants_blacklist, unused_constants_whitelist):
                 candidate = make_application(fn.name, arg_combs)
                 valid = self._valid_application_expr(candidate)
                 # print("\t" * (6 - max_depth + 1), "valid %s? %s" % (candidate, valid))

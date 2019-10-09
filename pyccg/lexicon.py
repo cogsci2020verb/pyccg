@@ -77,11 +77,14 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     # NB(Jiayuan Mao @ 04/13): make a copy of the ontology, so that we can register the used constants.
     # TODO(Jiayuan Mao @ 04/13): is this the right way to do this?
     self.ontology = ontology.clone()
-    self.ontology.override_registered_expressions({entry.semantics() for entries in self._entries.values() for entry in entries})
+    self.refresh_ontology_registration()
 
     self._derived_categories = {}
     self._derived_categories_by_base = defaultdict(set)
     self._derived_categories_by_source = {}
+
+  def refresh_ontology_registration(self):
+    self.ontology.override_registered_expressions({entry.semantics() for entries in self._entries.values() for entry in entries})
 
   @classmethod
   def fromstring(cls, lex_str, ontology=None, include_semantics=False,
@@ -172,6 +175,14 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     token = Token(word, category, semantics=semantics, weight=weight)
     self._entries[word].append(token)
 
+  def merge_entries(self, other_lexicons):
+    for word in other_lexicons._entries:
+      if word not in self._entries:
+        self._entries[word] = list()
+        for token in other_lexicons._entries[word]:
+          self._entries[word].append(token.clone())
+    self.refresh_ontology_registration()
+
   def __eq__(self, other):
     return isinstance(other, Lexicon) and self._starts == other._starts \
         and self._primitives == other._primitives and self._families == other._families \
@@ -204,9 +215,10 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     prune_count = 0
     for token in self._entries:
       entries_t = [token for token in self._entries[token] if token.weight() > 0]
-      entries_t = sorted(entries_t, key=lambda t: t.weight())[:max_entries]
+      entries_t = sorted(entries_t, key=lambda t: t.weight(), reverse=True)[:max_entries]
       prune_count += len(self._entries[token]) - len(entries_t)
       self._entries[token] = entries_t
+    self.refresh_ontology_registration()
 
     return prune_count
 
@@ -957,7 +969,6 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
             try:
               lex.ontology.typecheck(sentence_semantics)
             except l.TypeException as exc:
-              # print('FAIL: ' + '; '.join([f'{t} => {str(s)} [{str(e)}]' for t, s, e in zip(token_comb, syntax_comb, expr_comb)]), sentence_semantics, exc, sep='\n', end='\n' + '-'*120 + '\n')
               continue
 
             print('SUCCESS: ' + '; '.join([f'{t} => {str(s)} [{str(e)}]' for t, s, e in zip(token_comb, syntax_comb, expr_comb)]), sentence_semantics, sep='\n', end='\n' + '-'*120 + '\n')

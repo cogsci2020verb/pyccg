@@ -9,7 +9,8 @@ from pyccg.lexicon import predict_zero_shot, \
     augment_lexicon_nscl, augment_lexicon_distant, augment_lexicon_cross_situational, augment_lexicon_2afc, \
     build_bootstrap_likelihood
 from pyccg.perceptron import \
-    update_perceptron_nscl, update_perceptron_distant, update_perceptron_cross_situational, update_perceptron_2afc
+    update_perceptron_nscl, update_perceptron_nscl_with_cached_results, \
+    update_perceptron_distant, update_perceptron_cross_situational, update_perceptron_2afc
 from pyccg.util import Distribution, NoParsesError, NoParsesSyntaxError
 
 
@@ -252,7 +253,7 @@ class WordLearner(object):
     except NoParsesSyntaxError as e:
       # No parse succeeded -- attempt lexical induction.
       # TODO(Jiayuan Mao @ 04/10): suppress the warnings for now.
-      # L.warning("Parse failed for sentence '%s'", " ".join(sentence))
+      L.warning("Parse failed for sentence '%s'", " ".join(sentence))
       # L.warning(e)
 
       self.lexicon = self.do_lexical_induction(sentence, model, augment_lexicon_fn,
@@ -307,6 +308,24 @@ class WordLearner(object):
         update_perceptron_fn=update_perceptron_nscl,
         augment_lexicon_args=augment_lexicon_args,
         update_perceptron_args=update_perceptron_args)
+
+  def update_with_nscl_cached_results(self, sentence, model, answer, parses, normalized_scores, answer_scores, augment_lexicon_args=None, update_perceptron_args=None):
+    augment_lexicon_args = augment_lexicon_args or {}
+    update_perceptron_args = update_perceptron_args or {}
+
+    kwargs = {"answer": answer}
+    augment_lexicon_args.update(kwargs)
+    kwargs = {"parses": parses, "normalized_scores": normalized_scores, "answer_scores": answer_scores}
+    update_perceptron_args.update(kwargs)
+
+    return self._update_with_example(
+        sentence, model,
+        augment_lexicon_fn=augment_lexicon_nscl,
+        update_perceptron_fn=update_perceptron_nscl_with_cached_results,
+        augment_lexicon_args=augment_lexicon_args,
+        update_perceptron_args=update_perceptron_args
+    )
+
 
   def update_with_distant(self, sentence, model, answer, augment_lexicon_args=None, update_perceptron_args=None):
     """

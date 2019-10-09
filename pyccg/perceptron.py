@@ -134,6 +134,33 @@ def update_perceptron(lexicon, sentence, model, success_fn,
   return weighted_results, norm
 
 
+def update_perceptron_with_cached_results(lexicon, sentence, parses, normalized_scores, answer_scores, learning_rate=10, update_method="perceptron"):
+  assert update_method == 'reinforce', 'Only reinforce is implemented for update_perceptron_with_cached_results'
+
+  if not parses:
+    # NB(Jiayuan Mao @ 09/19): we need to check the parsing again, since the missing lexicons might have been induced in
+    # an instance in the same batch.
+    parser = chart.WeightedCCGChartParser(lexicon)
+    if len(parser.parse(sentence)) == 0:
+      raise NoParsesSyntaxError("No successful parses computed.", "")
+    else:
+      return [], 0
+
+  token_deltas = Counter()
+  for parse, score, answer_score in zip(parses, normalized_scores, answer_scores):
+    leaf_seq = tuple(leaf_token for _, leaf_token in parse.pos())
+    for leaf_token in leaf_seq:
+      token_deltas[leaf_token] += answer_score * score
+
+  norm = 0.0
+  for token, delta in token_deltas.items():
+    delta *= learning_rate
+    norm += delta ** 2
+    token._weight += delta
+
+  return parses, norm
+
+
 def _update_perceptron_distant_success_fn(parse_result, model, answer):
   root_token, _ = parse_result.label()
   L.debug('Semantics: {}; answer: {}; groundtruth: {}.'.format(root_token.semantics(), model.evaluate(root_token.semantics()), answer))
@@ -156,12 +183,18 @@ def _update_perceptron_distant_success_fn(parse_result, model, answer):
 
   return success, answer_score
 
+
 def update_perceptron_nscl(lexicon, sentence, model, answer,
                               **update_perceptron_kwargs):
 
   L.debug("Desired answer: %s", answer)
   success_fn = functools.partial(_update_perceptron_distant_success_fn, answer=answer)
   return update_perceptron(lexicon, sentence, model, success_fn, **update_perceptron_kwargs)
+
+
+def update_perceptron_nscl_with_cached_results(lexicon, sentence, model, parses, normalized_scores, answer_scores, **update_perceptron_kwargs):
+  # sentence and model will be ignored.
+  return update_perceptron_with_cached_results(lexicon, sentence, parses, normalized_scores, answer_scores, **update_perceptron_kwargs)
 
 
 def update_perceptron_distant(lexicon, sentence, model, answer,
