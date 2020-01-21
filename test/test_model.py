@@ -50,7 +50,7 @@ def test_model_constants():
 
   def test(msg, expr, expected):
     print("ret", model.evaluate(Expression.fromstring(expr)))
-    eq_(model.evaluate(Expression.fromstring(expr)), expected, msg=msg)
+    eq_(model.evaluate(Expression.fromstring(expr)), expected)
 
   for msg, expr, expected in cases:
     yield test, msg, expr, expected

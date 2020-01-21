@@ -14,6 +14,8 @@ from frozendict import frozendict
 
 from pyccg.logic import *
 
+L = logging.getLogger(__name__)
+
 
 class Model(object):
   """
