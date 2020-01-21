@@ -271,6 +271,10 @@ class WordLearner(object):
       except NoParsesError:
         return []
     except NoParsesError:
+      # TODO(hans): should attempt lexical induction here rather than quitting.
+      # the above handler only catches syntax failures, where we have no valid
+      # syntactic entry for words in the sentence
+
       # TODO(Jiayuan Mao @ 04/10): add handler for NoParsesError, meaning that there is no parses being able to
       # answer the question correctly.
       return []
