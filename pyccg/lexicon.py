@@ -74,10 +74,11 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     self._families = families
     self._entries = entries
 
-    # NB(Jiayuan Mao @ 04/13): make a copy of the ontology, so that we can register the used constants.
-    # TODO(Jiayuan Mao @ 04/13): is this the right way to do this?
-    self.ontology = ontology.clone()
-    self.refresh_ontology_registration()
+    self.ontology = None
+    if ontology is not None:
+      # NB(Jiayuan Mao @ 04/13): make a copy of the ontology, so that we can register the used constants.
+      self.ontology = ontology.clone()
+      self.refresh_ontology_registration()
 
     self._derived_categories = {}
     self._derived_categories_by_base = defaultdict(set)

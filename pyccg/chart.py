@@ -306,15 +306,18 @@ class WeightedCCGChartParser(nchart.CCGChartParser):
         score += logp
       return score
 
-    # TODO(Jiayuan Mao @ 05/15): added by Jiayuan, typecheck the results.
+    # TODO: Typechecking should be enforced *during* the parse.
     def typecheck_parse(parse):
         sentence_semantics = parse.label()[0].semantics()
         if sentence_semantics is None:
             return True
-        try:
-            self._lexicon.ontology.typecheck(sentence_semantics)
-        except l.TypeException:
-            return False
+
+        if self._lexicon.ontology is not None:
+          try:
+              self._lexicon.ontology.typecheck(sentence_semantics)
+          except l.TypeException:
+              return False
+
         return True
 
     results = [p for p in results if typecheck_parse(p)]
