@@ -18,7 +18,7 @@ from nltk.sem import logic as l
 from nltk.util import Trie
 from six import string_types
 
-from pyccg.logic.iterators import DefaultExpressionIterator
+from pyccg.logic.iterators import IterationContext, DefaultExpressionIterator
 
 L = logging.getLogger(__name__)
 
@@ -2201,9 +2201,11 @@ class Ontology(object):
   def iter_expressions(self, max_depth=3, type_request=None, **kwargs):
     if type_request is not None and isinstance(type_request, (list, tuple)):
       type_request = self.types[type_request]
+
+    context = IterationContext(bound_vars=(),
+                               semantic_type=type_request)
     ret = self.expression_iterator.iter_expressions(max_depth=max_depth,
-                                                    bound_vars=(),
-                                                    type_request=type_request,
+                                                    context=context,
                                                     **kwargs)
     ret = [x.normalize() for x in ret]
 
