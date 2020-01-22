@@ -2187,12 +2187,16 @@ class Ontology(object):
   def _prepare(self):
     self._nltk_type_signature = self._make_nltk_type_signature()
 
-  def iter_expressions(self, max_depth=3, type_request=None, **kwargs):
-    if type_request is not None and isinstance(type_request, (list, tuple)):
-      type_request = self.types[type_request]
+  def iter_expressions(self, max_depth=3,
+                       semantic_type=None,
+                       syntactic_type=None,
+                       **kwargs):
+    if semantic_type is not None and isinstance(semantic_type, (list, tuple)):
+      semantic_type = self.types[semantic_type]
 
     context = IterationContext(bound_vars=(),
-                               semantic_type=type_request)
+                               semantic_type=semantic_type,
+                               syntactic_type=syntactic_type)
     ret = self.expression_iterator.iter_expressions(max_depth=max_depth,
                                                     context=context,
                                                     **kwargs)

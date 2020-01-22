@@ -882,16 +882,24 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
   # for each category. Pre-calculate the necessary associations.
   category_sem_arities = lex.category_semantic_arities(soft_propagate_roots=True)
 
-  def iter_expressions_for_arity(arity, max_depth=3, blacklist=None):
-    type_request = ontology.types[("e",) * (arity + 1)]
-    kwargs = dict()
-    kwargs.update(iter_expressions_args)
-    assert 'type_request' not in kwargs
-    kwargs['type_request'] = type_request
-    assert 'unused_constants_blacklist' not in kwargs
-    kwargs['unused_constants_blacklist'] = blacklist
-    kwargs.setdefault('max_depth', max_depth)
-    return ontology.iter_expressions(**kwargs)
+  def iter_expressions_for_arity(arity, max_depth=3, blacklist=None,
+                                 **kwargs):
+    semantic_type = ontology.types[("e",) * (arity + 1)]
+
+    passed_kwargs = dict()
+    # First include global iter_expressions kwargs
+    passed_kwargs.update(iter_expressions_args)
+
+    # Now set instance-specific arguments
+    assert 'semantic_type' not in passed_kwargs
+    passed_kwargs['semantic_type'] = semantic_type
+    assert 'unused_constants_blacklist' not in passed_kwargs
+    passed_kwargs['unused_constants_blacklist'] = blacklist
+    passed_kwargs.setdefault('max_depth', max_depth)
+    for key, value in kwargs.items():
+      passed_kwargs.setdefault(key, value)
+
+    return ontology.iter_expressions(**passed_kwargs)
 
   def iter_expressions_for_category(cat, blacklist=None):
     """
@@ -900,7 +908,7 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
     between `cat` and semantic expressions.)
     """
     return itertools.chain.from_iterable(
-        iter_expressions_for_arity(arity, blacklist=blacklist)
+        iter_expressions_for_arity(arity, blacklist=blacklist, syntactic_type=cat)
         for arity in category_sem_arities[cat])
 
   # for expr_comb in tqdm(itertools.product(*candidate_exprs),
