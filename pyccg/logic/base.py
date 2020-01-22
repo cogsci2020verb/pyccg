@@ -2044,23 +2044,6 @@ def make_application(pred, args):
                           args[1:], expr)
 
 
-def listify(fn=None, wrapper=list):
-  """
-  A decorator which wraps a function's return value in ``list(...)``.
-
-  Useful when an algorithm can be expressed more cleanly as a generator but
-  the function should return an list.
-  """
-  def listify_return(fn):
-    @functools.wraps(fn)
-    def listify_helper(*args, **kw):
-      return wrapper(fn(*args, **kw))
-    return listify_helper
-  if fn is None:
-    return listify_return
-  return listify_return(fn)
-
-
 def extract_lambda(expr):
   """
   Extract `LambdaExpression` arguments to the top of a semantic form.
@@ -2137,11 +2120,11 @@ class Ontology(object):
     self.functions_dict = {}
     self.variable_weight = variable_weight
 
-    self.add_functions(functions)
-    self.constant_system = ConstantSystem(constants)
-
     expression_iterator = expression_iterator or DefaultExpressionIterator
     self.expression_iterator = expression_iterator(self)
+
+    self.add_functions(functions)
+    self.constant_system = ConstantSystem(constants)
 
     self._prepare()
 
@@ -2151,6 +2134,12 @@ class Ontology(object):
     if not retain_constant_usage:
       ret.constant_system.override_used_expressions(set())
     return ret
+
+  def clear_caches(self):
+    """
+    Clear any cached information tied to a particular ontology state.
+    """
+    self.expression_iterator.reset()
 
   @property
   def constants(self):
@@ -2165,7 +2154,7 @@ class Ontology(object):
                 FunctionVariableExpression]
 
   def add_functions(self, functions):
-    self._clear_expression_cache()
+    self.clear_caches()
 
     # Ignore functions which already exist.
     new_functions = []
@@ -2190,7 +2179,7 @@ class Ontology(object):
         assert function.arity == self.get_expr_arity(function.defn), function.name
 
   def add_constants(self, constants):
-    self._clear_expression_cache()
+    self.clear_caches()
 
     self.constant_system.constants = constants
     self.constant_system.constants_dict = {c.name: c for c in constants}
@@ -2211,34 +2200,6 @@ class Ontology(object):
 
     return ret
 
-  def _clear_expression_cache(self):
-    self._iter_expressions_inner.cache_clear()
-
-  @functools.lru_cache(maxsize=None)
-  @listify
-  def _iter_expressions_inner(self, max_depth, bound_vars,
-                              type_request=None, function_weights=None,
-                              use_unused_constants=False,
-                              unused_constants_whitelist=None,
-                              unused_constants_blacklist=None):
-    """
-    Enumerate all legal expressions.
-
-    Arguments:
-      max_depth: Maximum tree depth to traverse.
-      bound_vars: Bound variables (and their types) in the parent context. The
-        returned expressions may reference these variables. List of `(name,
-        type)` tuples.
-      type_request: Optional requested type of the expression. This helps
-        greatly restrict the space of enumerations when the type system is
-        strong.
-      function_weights: Override for function weights to determine the order in
-        which we consider proposing function application expressions.
-      use_unused_constants: If true, always use unused constants.
-      unused_constants_whitelist: If not None, a set of constants (by name),
-        all newly used constants for the current expression.
-    """
-
   def typecheck(self, expr, extra_type_signature=None):
     type_signature = self._nltk_type_signature
     if extra_type_signature is not None:
@@ -2255,11 +2216,11 @@ class Ontology(object):
     expr.typecheck(signature=type_signature)
 
   def register_expressions(self, expressions):
-    self._clear_expression_cache()
+    self.clear_caches()
     self.constant_system.mark_used_expressions(expressions)
 
   def override_registered_expressions(self, expressions):
-    self._clear_expression_cache()
+    self.clear_caches()
     self.constant_system.override_used_expressions(expressions)
 
   def infer_type(self, expr, variable_name, extra_types=None):

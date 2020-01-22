@@ -4,11 +4,13 @@ Defines strategies for enumerating over logical expressions within an ontology.
 
 from copy import copy
 from collections import namedtuple
+from functools import lru_cache
 import itertools
 
 from pyccg import logic as l
 from pyccg.logic import base as B
 from pyccg.logic.util import next_bound_var
+from pyccg.util import listify
 
 
 class IterationContext(object):
@@ -74,6 +76,14 @@ class ExpressionIterator(object):
     """
     raise NotImplementedError()
 
+  def reset(self):
+    """
+    Reset the state of this iterator. Called when e.g. the attached ontology is
+    updated. Iterators should clear caches and ontology-state-specific
+    information.
+    """
+    pass
+
 
 class DefaultExpressionIterator(ExpressionIterator):
   """
@@ -92,6 +102,11 @@ class DefaultExpressionIterator(ExpressionIterator):
                        l.IndividualVariableExpression, l.FunctionVariableExpression,
                        l.LambdaExpression]
 
+  def reset(self):
+    self.iter_expressions.cache_clear()
+
+  @lru_cache(maxsize=None)
+  @listify
   def iter_expressions(self, max_depth, context,
                        function_weights=None,
                        use_unused_constants=False,

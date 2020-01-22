@@ -1,5 +1,6 @@
 from collections import Counter, defaultdict
 from copy import copy
+import functools
 import heapq
 import itertools
 from queue import PriorityQueue
@@ -251,4 +252,21 @@ def trange(*args, enabled=None, **kwargs):
     return trange_(*args, **kwargs)
   # NB(Jiayuan): range takes no keyward arguments.
   return range(*args)
+
+
+def listify(fn=None, wrapper=list):
+  """
+  A decorator which wraps a function's return value in ``list(...)``.
+
+  Useful when an algorithm can be expressed more cleanly as a generator but
+  the function should return an list.
+  """
+  def listify_return(fn):
+    @functools.wraps(fn)
+    def listify_helper(*args, **kw):
+      return wrapper(fn(*args, **kw))
+    return listify_helper
+  if fn is None:
+    return listify_return
+  return listify_return(fn)
 
