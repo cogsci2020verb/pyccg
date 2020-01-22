@@ -285,3 +285,174 @@ class DefaultExpressionIterator(ExpressionIterator):
 
           yield l.FunctionVariableExpression(l.Variable(function.name, function.type))
 
+
+class TemplatedExpressionIterator(DefaultExpressionIterator):
+  """
+  A sample custom templated expression iterator, which assumes a custom
+  iteration strategy for each iteration context (based e.g. on syntactic type).
+  """
+
+  # This iterator is NOT sound -- it ignores most possible LFs!!
+  is_sound = False
+
+  def __init__(self, ontology, lexicon):
+    super().__init__(ontology)
+    self._lexicon = lexicon
+
+    TEMPLATES = {
+      lexicon.parse_category("N"): self._iter_expressions_entity,
+      lexicon.parse_category(r"S\N/N"): self._iter_expressions_event,
+      lexicon.parse_category(r"S\N"): self._iter_expressions_event,
+      lexicon.parse_category(r"S\S"): self._iter_expressions_adjunct,
+    }
+
+  @lru_cache(maxsize=None)
+  @listify
+  def iter_expressions(self, max_depth, context, **kwargs):
+    if max_depth == 0:
+      return
+
+    if context.syntactic_type in self.TEMPLATES:
+      # TODO typecheck
+      return self.TEMPLATES[context.syntactic_type](max_depth, context, **kwargs)
+    return super().iter_expressions(max_depth, context, **kwargs)
+
+  def _iter_expressions_entity(max_depth, context, **kwargs):
+    all_attributes = [] # TODO list of ConstantExpression
+    filter_attribute_fn = None # TODO ontology filter function
+    for attribute in all_attributes:
+      var = l.Variable(x) # TODO type
+      ret = l.LambdaExpression(var, B.make_application(filter_attribute_fn, (attribute,)))
+      self.ontology.typecheck(ret)
+      yield ret
+
+  def _iter_expressions_adjunct(context, **kwargs):
+    classifier_fns = [] # TODO
+    entity_type = None # TODO
+    entity_var = B.next_bound_var(context.bound_vars, entity_type)
+    spatial_constant_type = None # TODO
+
+    for classifier_fn in classifier_fns:
+      # Assuming args `event, entity, concept`
+      event_arg = None # TODO
+
+      for spatial_concepts in self._iter_constants(context=context.clone_with_semantic_type(spatial_constant_type)):
+        application_args = (event_arg, entity_var, spatial_concept)
+
+        # Yield \x e.classifier(event, entity, concept)
+        ret = l.LambdaExpression(entity_var,
+            l.LambdaExpression(event_arg,
+              B.make_application(classifier_fn, application_args)))
+
+        yield ret
+
+
+  def _iter_shallow_application_expressions(self, context, function,
+                                            use_unused_constants=False,
+                                            unused_constants_whitelist=None,
+                                            unused_constants_blacklist=None,
+                                            **kwargs):
+    all_arg_semantic_types = list(function.arg_types)
+
+    def product_sub_args(i, ret, blacklist, whitelist):
+      if i >= len(all_arg_semantic_types):
+        yield ret
+        return
+
+      arg_semantic_type = all_arg_semantic_types[i]
+
+      results = self._iter_shallow_expressions(context=context.clone_with_semantic_type(arg_semantic_type),
+                                               use_unused_constants=use_unused_constants,
+                                               unused_constants_whitelist=frozenset(whitelist),
+                                               unused_constants_blacklist=frozenset(blacklist))
+
+      new_blacklist = blacklist
+      for expr in results:
+        new_whitelist = whitelist | {c.name for c in expr.constants()}
+        for sub_expr in product_sub_args(i + 1, ret + (expr, ), new_blacklist, new_whitelist):
+          yield sub_expr
+          new_blacklist = new_blacklist | {c.name for arg in sub_expr for c in arg.constants()}
+
+    for arg_combs in product_sub_args(0, tuple(), unused_constants_blacklist, unused_constants_whitelist):
+      candidate = B.make_application(function.name, arg_combs)
+      valid = self.ontology._valid_application_expr(candidate)
+      # print("\t" * (6 - max_depth + 1), "valid %s? %s" % (candidate, valid))
+      if valid:
+        yield candidate
+
+  def _iter_constants(self, context,
+                      use_unused_constants=False,
+                      unused_constants_whitelist=None,
+                      unused_constants_blacklist=None):
+    if use_unused_constants:
+      for cand in list(self.ontology.constant_system.iter_new_constants(
+        semantic_type=context.semantic_type,
+        unused_constants_whitelist=unused_constants_whitelist,
+        unused_constants_blacklist=unused_constants_blacklist
+      )):
+        yield cand
+    else:
+      for const in self.ontology.constants:
+        if const.type.matches(context.semantic_type):
+          yield l.ConstantExpression(const)
+
+  def _iter_variable_expressions(self, context):
+    for var in context.bound_vars:
+      if var.type.matches(context.semantic_type):
+        yield l.IndividualVariableExpression(var)
+
+  def _iter_shallow_expressions(self, context,
+                                use_unused_constants=False,
+                                unused_constants_whitelist=None,
+                                unused_constants_blacklist=None):
+
+    ### Constants
+    for const in self._iter_constants(context,
+                                      use_unused_constants=use_unused_constants,
+                                      unused_constants_whitelist=unused_constants_whitelist,
+                                      unused_constants_blacklist):
+      yield const
+
+    ### Variables
+    for var in self._iter_variable_expressions(context):
+      yield var
+
+  def _iter_expressions_event(self, max_depth, context, **kwargs):
+    # Make parameter?
+    max_conjunctions = 4
+
+    # Iterate over conjunctions of shallow filter function applications.
+    filtering_fns = [] # TODO
+
+    # TODO can we make strong assumptions here?
+    variables = []
+    for _ in range(context.semantic_type.arity):
+      variables.append(next_bound_var(list(context.bound_vars) + variables,
+                                      self.ontology.types["e"]))
+
+    for n_conjunctions in range(1, max_conjunctions + 1):
+      # TODO smarter selection based on bound variable types
+      for conjuncts in itertools.product(filtering_fns, repeat=n_conjunctions):
+        conjunct_expr_sets = [
+          # TODO semantic_type below is mismatched for the sub-context.
+          # OK just because iter_shallow_application_expressions doesn't look.
+          # But we should figure out a more elegant way to handle this
+          self._iter_shallow_application_expressions(context, function, **kwargs)
+          for function in conjuncts
+        ]
+
+        # TODO any static filtering we can do here?
+        for conjunct_expr_seq in itertools.product(conjunct_expr_sets):
+          ret = None
+          for expr in conjunct_expr_seq:
+            if ret is None:
+              ret = expr
+            else:
+              ret = ret and expr
+
+          try:
+            self.ontology.typecheck(expr)
+          except l.InconsistentTypeHierarchyException:
+            pass
+          else:
+            yield expr
