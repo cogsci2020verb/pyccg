@@ -268,12 +268,15 @@ class WordLearner(object):
             self.lexicon, sentence, model,
             learning_rate=self.learning_rate,
             **update_perceptron_args)
-      except NoParsesError:
+      except NoParsesError as e:
+        # TODO attempt lexical induction?
         return []
-    except NoParsesError:
+    except NoParsesError as e:
       # TODO(hans): should attempt lexical induction here rather than quitting.
       # the above handler only catches syntax failures, where we have no valid
       # syntactic entry for words in the sentence
+      L.warning("Syntactic parse worked, but semantic parse failed for sentence '%s'",
+                " ".join(sentence))
 
       # TODO(Jiayuan Mao @ 04/10): add handler for NoParsesError, meaning that there is no parses being able to
       # answer the question correctly.
