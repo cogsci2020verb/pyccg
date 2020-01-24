@@ -13,12 +13,12 @@ from pyccg.util import softmax, NoParsesError, NoParsesSyntaxError
 L = logging.getLogger(__name__)
 
 
-def update_perceptron_batch(lexicon, data, learning_rate=0.1, parser=None):
+def update_perceptron_batch(learner, data, learning_rate=0.1, parser=None):
   """
   Execute a batch perceptron weight update with the given training data.
 
   Args:
-    lexicon: CCGLexicon with weights
+    learner: WordLearner with weights
     data: List of `(x, y)` tuples, where `x` is a list of string
       tokens and `y` is an LF string.
     learning_rate:
@@ -28,7 +28,7 @@ def update_perceptron_batch(lexicon, data, learning_rate=0.1, parser=None):
   """
 
   if parser is None:
-    parser = chart.WeightedCCGChartParser(lexicon)
+    parser = learner.make_parser()
 
   norm = 0.0
   for x, y in data:
@@ -55,12 +55,11 @@ def update_perceptron_batch(lexicon, data, learning_rate=0.1, parser=None):
   return norm
 
 
-def update_perceptron(lexicon, sentence, model, success_fn,
+def update_perceptron(learner, sentence, model, success_fn,
                       learning_rate=10, parser=None,
                       update_method="perceptron"):
   if parser is None:
-    parser = chart.WeightedCCGChartParser(lexicon,
-                                          ruleset=chart.DefaultRuleSet)
+    parser = learner.make_parser(ruleset=chart.DefaultRuleSet)
 
   norm = 0.0
   weighted_results = parser.parse(sentence, return_aux=True)
@@ -134,13 +133,13 @@ def update_perceptron(lexicon, sentence, model, success_fn,
   return weighted_results, norm
 
 
-def update_perceptron_with_cached_results(lexicon, sentence, parses, normalized_scores, answer_scores, learning_rate=10, update_method="perceptron"):
+def update_perceptron_with_cached_results(learner, sentence, parses, normalized_scores, answer_scores, learning_rate=10, update_method="perceptron"):
   assert update_method == 'reinforce', 'Only reinforce is implemented for update_perceptron_with_cached_results'
 
   if not parses:
     # NB(Jiayuan Mao @ 09/19): we need to check the parsing again, since the missing lexicons might have been induced in
     # an instance in the same batch.
-    parser = chart.WeightedCCGChartParser(lexicon)
+    parser = learner.make_parser()
     if len(parser.parse(sentence)) == 0:
       raise NoParsesSyntaxError("No successful parses computed.", "")
     else:
@@ -184,28 +183,28 @@ def _update_perceptron_distant_success_fn(parse_result, model, answer):
   return success, answer_score
 
 
-def update_perceptron_nscl(lexicon, sentence, model, answer,
+def update_perceptron_nscl(learner, sentence, model, answer,
                               **update_perceptron_kwargs):
 
   L.debug("Desired answer: %s", answer)
   success_fn = functools.partial(_update_perceptron_distant_success_fn, answer=answer)
-  return update_perceptron(lexicon, sentence, model, success_fn, **update_perceptron_kwargs)
+  return update_perceptron(learner, sentence, model, success_fn, **update_perceptron_kwargs)
 
 
-def update_perceptron_nscl_with_cached_results(lexicon, sentence, model, parses, normalized_scores, answer_scores, **update_perceptron_kwargs):
+def update_perceptron_nscl_with_cached_results(learner, sentence, model, parses, normalized_scores, answer_scores, **update_perceptron_kwargs):
   # sentence and model will be ignored.
-  return update_perceptron_with_cached_results(lexicon, sentence, parses, normalized_scores, answer_scores, **update_perceptron_kwargs)
+  return update_perceptron_with_cached_results(learner, sentence, parses, normalized_scores, answer_scores, **update_perceptron_kwargs)
 
 
-def update_perceptron_distant(lexicon, sentence, model, answer,
+def update_perceptron_distant(learner, sentence, model, answer,
                               **update_perceptron_kwargs):
 
   L.debug("Desired answer: %s", answer)
   success_fn = functools.partial(_update_perceptron_distant_success_fn, answer=answer)
-  return update_perceptron(lexicon, sentence, model, success_fn, **update_perceptron_kwargs)
+  return update_perceptron(learner, sentence, model, success_fn, **update_perceptron_kwargs)
 
 
-def update_perceptron_cross_situational(lexicon, sentence, model,
+def update_perceptron_cross_situational(learner, sentence, model,
                                         **update_perceptron_kwargs):
   def success_fn(parse_result, model):
     root_token, _ = parse_result.label()
@@ -218,11 +217,11 @@ def update_perceptron_cross_situational(lexicon, sentence, model,
 
     return success, 0.0
 
-  return update_perceptron(lexicon, sentence, model, success_fn,
+  return update_perceptron(learner, sentence, model, success_fn,
                            **update_perceptron_kwargs)
 
 
-def update_perceptron_2afc(lexicon, sentence, models,
+def update_perceptron_2afc(learner, sentence, models,
                            **update_perceptron_kwargs):
   def success_fn(parse_result, models):
     model1, model2 = models
@@ -240,5 +239,5 @@ def update_perceptron_2afc(lexicon, sentence, models,
 
     return (model1_success or model2_success), 0.0
 
-  return update_perceptron(lexicon, sentence, models, success_fn,
+  return update_perceptron(learner, sentence, models, success_fn,
                            **update_perceptron_kwargs)

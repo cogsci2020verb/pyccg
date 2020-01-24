@@ -257,7 +257,7 @@ class WordLearner(object):
 
     try:
       weighted_results, _ = update_perceptron_fn(
-          self.lexicon, sentence, model,
+          self, sentence, model,
           learning_rate=self.learning_rate,
           **update_perceptron_args)
     except NoParsesSyntaxError as e:
@@ -275,7 +275,7 @@ class WordLearner(object):
       # Attempt a new parameter update.
       try:
         weighted_results, _ = update_perceptron_fn(
-            self.lexicon, sentence, model,
+            self, sentence, model,
             learning_rate=self.learning_rate,
             **update_perceptron_args)
       except NoParsesError as e:
