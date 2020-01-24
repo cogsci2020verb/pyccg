@@ -74,7 +74,7 @@ def test_parse_oblique():
   the_table => NP
   """)
 
-  parser = WeightedCCGChartParser(lex, ApplicationRuleSet)
+  parser = WeightedCCGChartParser(lex, ruleset=ApplicationRuleSet)
   printCCGDerivation(parser.parse("place it on the_table".split())[0])
 
 
@@ -88,7 +88,7 @@ def test_parse_oblique_raised():
   the_table => NP
   """)
 
-  parser = WeightedCCGChartParser(lex, DefaultRuleSet)
+  parser = WeightedCCGChartParser(lex, ruleset=DefaultRuleSet)
   printCCGDerivation(parser.parse("place it on the_table".split())[0])
 
 

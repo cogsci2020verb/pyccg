@@ -625,12 +625,13 @@ def get_candidate_categories(lex, tokens, sentence, smooth=1e-3):
     """
     Assign a log-probability to a joint assignment of categories to tokens.
     """
+    # TODO should extract this to Scorer
 
     for token, category in zip(tokens, cat_assignment):
       lex.set_entries(token, [(category, None, 0.001)])
 
     # Attempt a parse.
-    results = chart.WeightedCCGChartParser(lex, chart.DefaultRuleSet) \
+    results = chart.WeightedCCGChartParser(lex, ruleset=chart.DefaultRuleSet) \
         .parse(sentence, return_aux=True)
     if results:
       # Prior weight for category comes from lexicon.
