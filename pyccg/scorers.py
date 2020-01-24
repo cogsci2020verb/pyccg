@@ -12,6 +12,8 @@ import numpy as np
 # TODO feature: support partial parses, so that chart parser can use a Scorer
 # to prune
 
+# TODO feature: more explicitly handle log-probs vs scores
+
 
 class Scorer(object):
   """
@@ -50,6 +52,22 @@ class Scorer(object):
     Returns `numpy.ndarray` of floats with the same length as `parses`.
     """
     return np.array([self.score(parse) for parse in parses])
+
+  def update_with_scores(self, results, incorrect_results=None):
+    """
+    Update scorer weights based on the weighted results (blocked into "correct"
+    and "incorrect" groups).
+
+    Args:
+      results: List of `(score, parse)` tuples, where `score` comes
+        from some downstream evaluation
+      incorrect_results: same format as `results`, but incorrect!
+        Only relevant for downstream evaluations which explicitly separate
+        "correct" and "incorrect" parses. If provided, `results` should only
+        contain parses which are correct -- i.e., the two sets of parses should
+        be disjoint. (This is not checked by the Scorer.)
+    """
+    ...
 
 
 class LexiconScorer(Scorer):
