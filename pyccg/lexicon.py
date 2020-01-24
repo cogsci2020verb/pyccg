@@ -623,10 +623,8 @@ def get_candidate_categories(lex, scorer, tokens, sentence, smooth=1e-3):
 
   def score_cat_assignment(cat_assignment):
     """
-    Assign a log-probability to a joint assignment of categories to tokens.
+    Calculate a log-probability for a joint assignment of categories to tokens.
     """
-    # TODO should extract this to Scorer
-
     for token, category in zip(tokens, cat_assignment):
       lex.set_entries(token, [(category, None, 0.001)])
     new_scorer = scorer.clone_with_lexicon(lex)
