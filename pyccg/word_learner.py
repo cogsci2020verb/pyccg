@@ -11,6 +11,7 @@ from pyccg.lexicon import predict_zero_shot, \
 from pyccg.perceptron import \
     update_perceptron_nscl, update_perceptron_nscl_with_cached_results, \
     update_perceptron_distant, update_perceptron_cross_situational, update_perceptron_2afc
+from pyccg.scorers import LexiconScorer
 from pyccg.util import Distribution, NoParsesError, NoParsesSyntaxError
 
 
@@ -20,6 +21,7 @@ L = logging.getLogger(__name__)
 class WordLearner(object):
 
   def __init__(self, lexicon, bootstrap=False,
+               scorer=None,
                learning_rate=10.0,
                beta=3.0,
                syntax_prior_smooth=1e-3,
@@ -37,6 +39,10 @@ class WordLearner(object):
     self.lexicon = lexicon
 
     self.bootstrap = bootstrap
+
+    if scorer is None:
+      scorer = LexiconScorer(self.lexicon)
+    self.scorer = scorer
 
     # Learning hyperparameters
     self.learning_rate = learning_rate
@@ -56,11 +62,15 @@ class WordLearner(object):
   def ontology(self):
     return self.lexicon.ontology
 
-  def make_parser(self, ruleset=chart.DefaultRuleSet):
+  def make_parser(self, lexicon=None, ruleset=chart.DefaultRuleSet):
     """
     Construct a CCG parser from the current learner state.
     """
-    return chart.WeightedCCGChartParser(self.lexicon, ruleset=ruleset)
+    if lexicon is None:
+      lexicon = self.lexicon
+    return chart.WeightedCCGChartParser(lexicon=lexicon,
+                                        scorer=self.scorer,
+                                        ruleset=ruleset)
 
   def prepare_lexical_induction(self, sentence):
     """
@@ -82,7 +92,7 @@ class WordLearner(object):
       # require an entry inserted
       L.info("Novel words: %s", " ".join(query_tokens))
       query_token_syntaxes = get_candidate_categories(
-          self.lexicon, query_tokens, sentence,
+          self.lexicon, self.scorer, query_tokens, sentence,
           smooth=self.syntax_prior_smooth)
 
       return query_tokens, query_token_syntaxes
@@ -191,7 +201,7 @@ class WordLearner(object):
       model_scores: `Distribution` over scene models (with support `models`),
         `p(referred scene | sentence)`
     """
-    parser = chart.WeightedCCGChartParser(self.lexicon)
+    parser = self.make_parser()
     weighted_results = parser.parse(sentence, True)
     if len(weighted_results) == 0:
       L.warning("Parse failed for sentence '%s'", " ".join(sentence))
@@ -199,7 +209,7 @@ class WordLearner(object):
       aug_lexicon = self.do_lexical_induction(sentence, (model1, model2),
                                               augment_lexicon_fn=augment_lexicon_2afc,
                                               queue_limit=50)
-      parser = chart.WeightedCCGChartParser(aug_lexicon)
+      parser = self.make_parser(lexicon=aug_lexicon)
       weighted_results = parser.parse(sentence, True)
 
     dist = Distribution()

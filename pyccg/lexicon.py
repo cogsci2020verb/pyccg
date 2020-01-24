@@ -587,7 +587,7 @@ def set_yield(category, new_yield):
     raise ValueError("unknown category type of instance %r" % category)
 
 
-def get_candidate_categories(lex, tokens, sentence, smooth=1e-3):
+def get_candidate_categories(lex, scorer, tokens, sentence, smooth=1e-3):
   """
   Find candidate categories for the given tokens which appear in `sentence` such
   that `sentence` yields a parse.
@@ -629,28 +629,17 @@ def get_candidate_categories(lex, tokens, sentence, smooth=1e-3):
 
     for token, category in zip(tokens, cat_assignment):
       lex.set_entries(token, [(category, None, 0.001)])
+    new_scorer = scorer.clone_with_lexicon(lex)
 
     # Attempt a parse.
-    results = chart.WeightedCCGChartParser(lex, ruleset=chart.DefaultRuleSet) \
-        .parse(sentence, return_aux=True)
-    if results:
-      # Prior weight for category comes from lexicon.
-      #
-      # Might also downweight categories which require type-lifting parses by
-      # default?
-      score = 0
-      for token, category in zip(tokens, cat_assignment):
-        score += np.log(category_prior[category])
+    parser = chart.WeightedCCGChartParser(lex, scorer=new_scorer, ruleset=chart.DefaultRuleSet)
+    results = parser.parse(sentence, return_aux=True)
+    if len(results) == 0:
+      return -np.inf
 
-      # Likelihood weight comes from parse score
-      # NB(Jiayuan):: use logsumexp for numeric stability.
-      score += logsumexp([w for _, w, _ in results])
-      # score += np.log(sum(np.exp(weight)
-      #                     for _, weight, _ in results))
-
-      return score
-
-    return -np.inf
+    # Get total probability mass of legal parses.
+    logp = logsumexp([logp for _, logp, _ in results])
+    return logp
 
   # NB does not cover the case where a single token needs multiple syntactic
   # interpretations for the sentence to parse

@@ -226,8 +226,6 @@ class WeightedCCGChartParser(nchart.CCGChartParser):
 
     if scorer is None:
       scorer = LexiconScorer(lexicon)
-    else:
-      raise RuntimeError("dev")
     self.scorer = scorer
 
   def _parse_inner(self, chart):

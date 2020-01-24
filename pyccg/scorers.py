@@ -3,6 +3,8 @@ Defines models for scoring inferred chart parses, and for
 updating weights in virtue of success / failure of parses.
 """
 
+from copy import copy
+
 from nltk.tree import Tree
 import numpy as np
 
@@ -17,6 +19,14 @@ class Scorer(object):
   syntactic+semantic).
   """
 
+  requires_semantics = False
+  """
+  If `True`, this scorer fails on parses missing semantic representations.
+  """
+
+  def __init__(self, lexicon):
+    self._lexicon = lexicon
+
   def __call__(self, parse):
     if isinstance(parse, Tree):
       return self.score(parse)
@@ -24,6 +34,11 @@ class Scorer(object):
       return self.score_batch(parse)
     else:
       raise ValueError("Don't know how to score parse of type %s: %s" % (type(parse), parse))
+
+  def clone_with_lexicon(self, lexicon):
+    clone = copy(self)
+    clone.lexicon = lexicon
+    return clone
 
   def score(self, parse):
     raise NotImplementedError()
@@ -50,9 +65,6 @@ class LexiconScorer(Scorer):
   from lexicon weights.
   """
 
-  def __init__(self, lexicon):
-    self._lexicon = lexicon
-
   def score(self, parse):
     category_priors = self._lexicon.observed_category_distribution()
     total_category_masses = self._lexicon.total_category_masses()
@@ -63,6 +75,7 @@ class LexiconScorer(Scorer):
       if prior == 0:
         return -np.inf
 
+      # TODO prefer softmax distribution
       likelihood = max(token.weight(), 1e-6) / total_category_masses[token.categ()]
       logp += np.log(prior) + np.log(likelihood)
 
