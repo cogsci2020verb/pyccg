@@ -206,12 +206,22 @@ class UniquePriorityQueue(PriorityQueue):
     return ret
 
 
-def softmax(arr, axis=-1):
-    assert axis == -1
-    arr = arr - arr.max(axis=axis)
-    arr = np.exp(arr)
-    arr /= arr.sum(axis=axis, keepdims=True)
-    return arr
+def softmax(obj, axis=-1):
+  return_dict = False
+  if isinstance(obj, dict):
+    return_dict = True
+    keys = list(obj.keys())
+    obj = list(obj.values())
+
+  arr = np.asarray(obj)
+  assert axis == -1
+  arr = arr - arr.max(axis=axis)
+  arr = np.exp(arr)
+  arr /= arr.sum(axis=axis, keepdims=True)
+
+  if return_dict:
+    return dict(zip(keys, arr))
+  return arr
 
 
 class tuple_unordered(tuple):

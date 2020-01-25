@@ -8,6 +8,8 @@ from copy import copy
 from nltk.tree import Tree
 import numpy as np
 
+from pyccg.util import softmax
+
 
 # TODO feature: support partial parses, so that chart parser can use a Scorer
 # to prune
@@ -84,8 +86,8 @@ class LexiconScorer(Scorer):
   """
 
   def score(self, parse):
-    category_priors = self._lexicon.observed_category_distribution()
-    total_category_masses = self._lexicon.total_category_masses()
+    category_priors = softmax(self._lexicon.total_category_masses())
+    total_category_masses = self._lexicon.total_category_masses(exponentiate=True)
 
     logp = 0.0
     for _, token in parse.pos():

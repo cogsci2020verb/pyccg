@@ -244,7 +244,9 @@ class Lexicon(ccg_lexicon.CCGLexicon):
                 for token_list in self._entries.values()
                 for token in token_list])
 
-  def total_category_masses(self, exclude_tokens=frozenset(),
+  def total_category_masses(self,
+                            exponentiate=False,
+                            exclude_tokens=frozenset(),
                             soft_propagate_roots=False):
     """
     Return the total weight mass assigned to each syntactic category. Shifts
@@ -265,6 +267,8 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     # Track categories with root yield.
     rooted_cats = set()
 
+    preprocess = np.exp if exponentiate else lambda x: x
+
     for token, entries in self._entries.items():
       if token in exclude_tokens:
         continue
@@ -274,14 +278,14 @@ class Lexicon(ccg_lexicon.CCGLexicon):
           rooted_cats.add((c_yield, entry.categ()))
 
         if entry.weight() > 0.0:
-          ret[entry.categ()] += entry.weight()
+          ret[entry.categ()] += preprocess(entry.weight())
 
     if soft_propagate_roots:
       for c_yield, rooted_cat in rooted_cats:
         for derived_root_cat in self._derived_categories_by_base[c_yield]:
           soft_prop_cat = set_yield(rooted_cat, derived_root_cat)
           # Ensure key exists.
-          ret.setdefault(soft_prop_cat, 0.0)
+          ret.setdefault(soft_prop_cat, preprocess(entry.weight()))
 
     return ret
 
