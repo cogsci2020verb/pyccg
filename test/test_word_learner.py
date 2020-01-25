@@ -6,10 +6,11 @@ from pyccg import chart
 from pyccg import lexicon as lex
 from pyccg import logic as log
 from pyccg.model import Model
+from pyccg.scorers import LexiconScorer
 from pyccg.word_learner import *
 
 
-def _make_mock_learner(**kwargs):
+def _make_mock_learner(update_method="perceptron", **kwargs):
   ## Specify ontology.
   types = log.TypeSystem(["object", "location", "boolean", "action"])
   functions = [
@@ -32,7 +33,9 @@ def _make_mock_learner(**kwargs):
   away => N {away}
   """, ontology=ont, include_semantics=True)
 
-  return WordLearner(lexicon, **kwargs)
+  scorer = LexiconScorer(lexicon, update_method=update_method)
+
+  return WordLearner(lexicon, scorer=scorer, **kwargs)
 
 
 def _make_mock_model(learner):
@@ -59,7 +62,33 @@ def test_update_distant_existing_words():
   old_lex.debug_print()
   print("====\n")
   learner.lexicon.debug_print()
-  eq_(old_lex, learner.lexicon)
+
+  eq_(set([(e.categ(), e.semantics()) for e in old_lex.all_entries]),
+      set([(e.categ(), e.semantics()) for e in learner.lexicon.all_entries]))
+
+
+def test_update_distant_existing_words_reinforce():
+  """
+  update_distant with no novel words
+  """
+  sentence = "goto there".split()
+  answer = ("go", "there")
+
+  learner = _make_mock_learner(update_method="reinforce")
+  old_lex = learner.lexicon.clone()
+
+  model = _make_mock_model(learner)
+  print(learner.lexicon.parameters())
+  results = learner.update_with_distant(sentence, model, answer)
+  print(learner.lexicon.parameters())
+  ok_(len(results) > 0, "Parser has >0 parses for valid sentence")
+
+  old_lex.debug_print()
+  print("====\n")
+  learner.lexicon.debug_print()
+
+  eq_(set([(e.categ(), e.semantics()) for e in old_lex.all_entries]),
+      set([(e.categ(), e.semantics()) for e in learner.lexicon.all_entries]))
 
 
 def test_update_distant_one_novel_word():
@@ -80,8 +109,10 @@ def test_update_distant_one_novel_word():
   learner.lexicon.debug_print()
 
   # other words should not have changed.
-  eq_(old_lex._entries["there"], learner.lexicon._entries["there"])
-  eq_(old_lex._entries["goto"], learner.lexicon._entries["goto"])
+  eq_(set((e.categ(), e.semantics()) for e in old_lex._entries["there"]),
+      set((e.categ(), e.semantics()) for e in learner.lexicon._entries["there"]))
+  eq_(set((e.categ(), e.semantics()) for e in old_lex._entries["goto"]),
+      set((e.categ(), e.semantics()) for e in learner.lexicon._entries["goto"]))
 
   eq_(len(learner.lexicon._entries["here"]), 1, "One valid new word entry")
   entry = learner.lexicon._entries["here"][0]

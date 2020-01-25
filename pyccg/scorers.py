@@ -3,11 +3,13 @@ Defines models for scoring inferred chart parses, and for
 updating weights in virtue of success / failure of parses.
 """
 
+from collections import Counter
 from copy import copy
 
 from nltk.tree import Tree
 import numpy as np
 import torch as T
+from torch import nn
 from torch.nn import functional as F
 
 
@@ -17,7 +19,7 @@ from torch.nn import functional as F
 # TODO feature: more explicitly handle log-probs vs scores
 
 
-class Scorer(object):
+class Scorer(nn.Module):
   """
   Interface for scoring inferred chart parses (syntactic or
   syntactic+semantic).
@@ -44,8 +46,11 @@ class Scorer(object):
     clone.lexicon = lexicon
     return clone
 
-  def score(self, parse):
+  def forward(self, parse):
     raise NotImplementedError()
+
+  def score(self, parse):
+    return self.forward(parse)
 
   def score_batch(self, parses):
     """
@@ -54,22 +59,6 @@ class Scorer(object):
     Returns `numpy.ndarray` of floats with the same length as `parses`.
     """
     return np.array([self.score(parse) for parse in parses])
-
-  def update_with_scores(self, results, incorrect_results=None):
-    """
-    Update scorer weights based on the weighted results (blocked into "correct"
-    and "incorrect" groups).
-
-    Args:
-      results: List of `(score, parse)` tuples, where `score` comes
-        from some downstream evaluation
-      incorrect_results: same format as `results`, but incorrect!
-        Only relevant for downstream evaluations which explicitly separate
-        "correct" and "incorrect" parses. If provided, `results` should only
-        contain parses which are correct -- i.e., the two sets of parses should
-        be disjoint. (This is not checked by the Scorer.)
-    """
-    ...
 
 
 class LexiconScorer(Scorer):
@@ -85,7 +74,13 @@ class LexiconScorer(Scorer):
   from lexicon weights.
   """
 
-  def score(self, parse):
+  def __init__(self, lexicon, update_method="perceptron"):
+    # TODO ensure that lexicon weights are tensors
+
+    super().__init__(lexicon)
+    self.update_method = update_method
+
+  def forward(self, parse):
     categs, categ_priors = self._lexicon.total_category_masses()
     categ_priors = F.softmax(categ_priors)
     categ_to_idx = dict(zip(categs, range(len(categs))))

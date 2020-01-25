@@ -1,7 +1,9 @@
+from copy import copy
 import itertools
 import logging
 
 import numpy as np
+from torch import optim
 
 from pyccg import chart
 from pyccg.lexicon import predict_zero_shot, \
@@ -10,7 +12,7 @@ from pyccg.lexicon import predict_zero_shot, \
     build_bootstrap_likelihood
 from pyccg.perceptron import \
     update_perceptron_nscl, update_perceptron_nscl_with_cached_results, \
-    update_perceptron_distant, update_perceptron_cross_situational, update_perceptron_2afc
+    update_distant, update_perceptron_cross_situational, update_perceptron_2afc
 from pyccg.scorers import LexiconScorer
 from pyccg.util import Distribution, NoParsesError, NoParsesSyntaxError
 
@@ -27,7 +29,6 @@ class WordLearner(object):
                syntax_prior_smooth=1e-3,
                meaning_prior_smooth=1e-3,
                bootstrap_alpha=0.25,
-               update_perceptron_algo="perceptron",
                prune_entries=None,
                zero_shot_limit=5,
                limit_induction=False):
@@ -44,6 +45,8 @@ class WordLearner(object):
       scorer = LexiconScorer(self.lexicon)
     self.scorer = scorer
 
+    self.optimizer = optim.SGD(lexicon.parameters(), lr=learning_rate)
+
     # Learning hyperparameters
     self.learning_rate = learning_rate
     self.beta = beta
@@ -53,10 +56,6 @@ class WordLearner(object):
     self.prune_entries = prune_entries
     self.zero_shot_limit = zero_shot_limit
     self.limit_induction = limit_induction
-
-    if update_perceptron_algo not in ["perceptron", "reinforce"]:
-      raise ValueError('Unknown update_perceptron algorithm: {}.'.format(update_perceptron_algo))
-    self.update_perceptron_algo = update_perceptron_algo
 
   @property
   def ontology(self):
@@ -233,9 +232,9 @@ class WordLearner(object):
     return dist.ensure_support((model1, model2)).normalize()
 
   def _update_with_example(self, sentence, model,
-                           augment_lexicon_fn, update_perceptron_fn,
+                           augment_lexicon_fn, update_fn,
                            augment_lexicon_args=None,
-                           update_perceptron_args=None):
+                           update_args=None):
     """
     Observe a new `sentence -> answer` pair in the context of some `model` and
     update learner weights.
@@ -251,33 +250,42 @@ class WordLearner(object):
 
     augment_lexicon_args = augment_lexicon_args or {}
 
-    base_update_perceptron_args = {"update_method": self.update_perceptron_algo}
-    base_update_perceptron_args.update(update_perceptron_args or {})
-    update_perceptron_args = base_update_perceptron_args
+    self.optimizer.zero_grad()
 
     try:
-      weighted_results, _ = update_perceptron_fn(
+      weighted_results = update_fn(
           self, sentence, model,
           learning_rate=self.learning_rate,
-          **update_perceptron_args)
+          **update_args)
     except NoParsesSyntaxError as e:
       # No parse succeeded -- attempt lexical induction.
       # TODO(Jiayuan Mao @ 04/10): suppress the warnings for now.
       L.warning("Parse failed for sentence '%s'", " ".join(sentence))
       # L.warning(e)
 
+      # Track optimizer parameter set before lexical induction.
+      old_params = set([id(param) for param in self.optimizer.param_groups[0]])
+
       self.lexicon = self.do_lexical_induction(sentence, model, augment_lexicon_fn,
                                                **augment_lexicon_args)
+
+      # Add new lexicon parameters to optimizer.
+      # TODO can't get this to work -- for now we just reinitialize. Fine for stateless SGD.
+      # new_params_map = {id(param): param for param in self.lexicon.parameters()}
+      # new_params = set(new_params_map.keys()) - set(old_params)
+      # self.optimizer.add_param_group({"params": [new_params_map[p_id] for p_id in new_params]})
+      self.optimizer = optim.SGD(self.lexicon.parameters(),
+                                 lr=self.learning_rate)
 
       # TODO(Jiayuan Mao @ 04/10): suppress the printing for now.
       # self.lexicon.debug_print()
 
       # Attempt a new parameter update.
       try:
-        weighted_results, _ = update_perceptron_fn(
+        weighted_results = update_fn(
             self, sentence, model,
             learning_rate=self.learning_rate,
-            **update_perceptron_args)
+            **update_args)
       except NoParsesError as e:
         # TODO attempt lexical induction?
         return []
@@ -292,13 +300,15 @@ class WordLearner(object):
       # answer the question correctly.
       return []
 
+    self.optimizer.step()
+
     if self.prune_entries is not None:
       prune_count = self.lexicon.prune(max_entries=self.prune_entries)
       L.info("Pruned %i entries from lexicon.", prune_count)
 
     return weighted_results
 
-  def update_with_nscl(self, sentence, model, answer, augment_lexicon_args=None, update_perceptron_args=None):
+  def update_with_nscl(self, sentence, model, answer, augment_lexicon_args=None, update_args=None):
     """
     Observe a new `sentence -> answer` pair in the context of some `model` and
     update learner weights. This function assumes that the `model` is jointly
@@ -313,38 +323,38 @@ class WordLearner(object):
       weighted_results: List of weighted parse results for the example.
     """
     augment_lexicon_args = augment_lexicon_args or {}
-    update_perceptron_args = update_perceptron_args or {}
+    update_args = update_args or {}
 
     kwargs = {"answer": answer}
     augment_lexicon_args.update(kwargs)
-    update_perceptron_args.update(kwargs)
+    update_args.update(kwargs)
 
     return self._update_with_example(
         sentence, model,
         augment_lexicon_fn=augment_lexicon_nscl,
-        update_perceptron_fn=update_perceptron_nscl,
+        update_fn=update_perceptron_nscl,
         augment_lexicon_args=augment_lexicon_args,
-        update_perceptron_args=update_perceptron_args)
+        update_args=update_args)
 
-  def update_with_nscl_cached_results(self, sentence, model, answer, parses, normalized_scores, answer_scores, augment_lexicon_args=None, update_perceptron_args=None):
+  def update_with_nscl_cached_results(self, sentence, model, answer, parses, normalized_scores, answer_scores, augment_lexicon_args=None, update_args=None):
     augment_lexicon_args = augment_lexicon_args or {}
-    update_perceptron_args = update_perceptron_args or {}
+    update_args = update_args or {}
 
     kwargs = {"answer": answer}
     augment_lexicon_args.update(kwargs)
     kwargs = {"parses": parses, "normalized_scores": normalized_scores, "answer_scores": answer_scores}
-    update_perceptron_args.update(kwargs)
+    update_args.update(kwargs)
 
     return self._update_with_example(
         sentence, model,
         augment_lexicon_fn=augment_lexicon_nscl,
-        update_perceptron_fn=update_perceptron_nscl_with_cached_results,
+        update_fn=update_perceptron_nscl_with_cached_results,
         augment_lexicon_args=augment_lexicon_args,
-        update_perceptron_args=update_perceptron_args
+        update_args=update_args
     )
 
 
-  def update_with_distant(self, sentence, model, answer, augment_lexicon_args=None, update_perceptron_args=None):
+  def update_with_distant(self, sentence, model, answer, augment_lexicon_args=None, update_args=None):
     """
     Observe a new `sentence -> answer` pair in the context of some `model` and
     update learner weights.
@@ -358,18 +368,18 @@ class WordLearner(object):
       weighted_results: List of weighted parse results for the example.
     """
     augment_lexicon_args = augment_lexicon_args or {}
-    update_perceptron_args = update_perceptron_args or {}
+    update_args = update_args or {}
 
     kwargs = {"answer": answer}
     augment_lexicon_args.update(kwargs)
-    update_perceptron_args.update(kwargs)
+    update_args.update(kwargs)
 
     return self._update_with_example(
         sentence, model,
         augment_lexicon_fn=augment_lexicon_distant,
-        update_perceptron_fn=update_perceptron_distant,
+        update_fn=update_distant,
         augment_lexicon_args=augment_lexicon_args,
-        update_perceptron_args=update_perceptron_args)
+        update_args=update_args)
 
   def update_with_cross_situational(self, sentence, model):
     """
@@ -387,7 +397,7 @@ class WordLearner(object):
     return self._update_with_example(
         sentence, model,
         augment_lexicon_fn=augment_lexicon_cross_situational,
-        update_perceptron_fn=update_perceptron_cross_situational)
+        update_fn=update_perceptron_cross_situational)
 
   def update_with_2afc(self, sentence, model1, model2):
     """
@@ -409,4 +419,4 @@ class WordLearner(object):
     return self._update_with_example(
         sentence, (model1, model2),
         augment_lexicon_fn=augment_lexicon_2afc,
-        update_perceptron_fn=update_perceptron_2afc)
+        update_fn=update_perceptron_2afc)

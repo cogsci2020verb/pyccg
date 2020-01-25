@@ -238,6 +238,13 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     return ccg_lexicon.augParseCategory(cat_str, self._primitives, self._families)[0]
 
   @property
+  def all_entries(self):
+    return [entry for entries in self._entries.values() for entry in entries]
+
+  def parameters(self):
+    return [e.weight() for e in self.all_entries]
+
+  @property
   def primitive_categories(self):
     return set([self.parse_category(prim) for prim in self._primitives])
 
@@ -246,9 +253,7 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     """
     Find categories (both primitive and functional) attested in the lexicon.
     """
-    return set([token.categ()
-                for token_list in self._entries.values()
-                for token in token_list])
+    return set([e.categ() for e in self.all_entries])
 
   def total_category_masses(self,
                             exponentiate=False,
@@ -270,12 +275,11 @@ class Lexicon(ccg_lexicon.CCGLexicon):
 
     preprocess = T.exp if exponentiate else lambda x: x
 
-    for token, entries in self._entries.items():
-      if token in exclude_tokens:
+    for entry in self.all_entries:
+      if entry._token in exclude_tokens:
         continue
-      for entry in entries:
-        if entry.weight() > 0.0:
-          ret[categ_to_idx[entry.categ()]] += preprocess(entry.weight())
+      if entry.weight() > 0.0:
+        ret[categ_to_idx[entry.categ()]] += preprocess(entry.weight())
 
     return categs, ret
 
@@ -309,8 +313,7 @@ class Lexicon(ccg_lexicon.CCGLexicon):
         or get_semantic_arity
 
     entries_by_categ = {
-      category: set(entry for entry in itertools.chain.from_iterable(self._entries.values())
-                    if entry.categ() == category)
+      category: set(entry for entry in self.all_entries if entry.categ() == category)
       for category in self.observed_categories
     }
 
@@ -1032,7 +1035,7 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
     total_mass = sum(candidates.values())
     if len(candidates) > 0:
       lex.set_entries(token,
-                      [(syntax, meaning, weight / total_mass * beta)
+                      [(syntax, meaning, T.detach(weight / total_mass * beta))
                        for (syntax, meaning), weight in candidates.items()])
 
       L.info("Inferred %i novel entries for token %s:", len(candidates), token)
