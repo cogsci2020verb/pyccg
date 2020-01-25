@@ -7,8 +7,8 @@ from copy import copy
 
 from nltk.tree import Tree
 import numpy as np
-
-from pyccg.util import softmax
+import torch as T
+from torch.nn import functional as F
 
 
 # TODO feature: support partial parses, so that chart parser can use a Scorer
@@ -86,17 +86,22 @@ class LexiconScorer(Scorer):
   """
 
   def score(self, parse):
-    category_priors = softmax(self._lexicon.total_category_masses())
-    total_category_masses = self._lexicon.total_category_masses(exponentiate=True)
+    categs, categ_priors = self._lexicon.total_category_masses()
+    categ_priors = F.softmax(categ_priors)
+    categ_to_idx = dict(zip(categs, range(len(categs))))
 
-    logp = 0.0
+    _, total_categ_masses = self._lexicon.total_category_masses(exponentiate=True)
+
+    logp = T.zeros(())
     for _, token in parse.pos():
-      prior = category_priors[token.categ()]
+      categ_idx = categ_to_idx[token.categ()]
+
+      prior = categ_priors[categ_idx]
       if prior == 0:
         return -np.inf
 
       # TODO prefer softmax distribution
-      likelihood = max(token.weight(), 1e-6) / total_category_masses[token.categ()]
-      logp += np.log(prior) + np.log(likelihood)
+      likelihood = T.exp(max(token.weight(), 1e-6)) / total_categ_masses[categ_idx]
+      logp += T.log(prior) + T.log(likelihood)
 
     return logp

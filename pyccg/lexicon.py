@@ -15,6 +15,8 @@ from nltk.ccg import lexicon as ccg_lexicon
 from nltk.ccg.api import PrimitiveCategory, FunctionalCategory, AbstractCCGCategory
 import numpy as np
 from scipy.special import logsumexp
+import torch as T
+from torch.nn import Parameter
 
 from pyccg import chart, Token
 from pyccg.combinator import category_search_replace
@@ -137,6 +139,7 @@ class Lexicon(ccg_lexicon.CCGLexicon):
                 ontology.typecheck(semantics)
 
           weight = float(weight[1:-1]) if weight is not None else default_weight
+          weight = Parameter(T.tensor(weight), requires_grad=True)
 
           # Word definition
           # ie, which => (N\N)/(S/NP)
@@ -157,6 +160,9 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     """
     self._entries[word] = []
     for category, semantics, weight in entries:
+      if isinstance(weight, (float, int)):
+        weight = T.tensor(weight, requires_grad=False)
+
       self.add_entry(word, category, semantics=semantics, weight=weight)
 
   def add_entry(self, word, category, semantics=None, weight=None):
@@ -167,7 +173,7 @@ class Lexicon(ccg_lexicon.CCGLexicon):
       word: String wordform
       category: Syntactic category
       semantics: Meaning representation
-      weight: Float weight
+      weight: Tensor weight
     """
     # Typecheck and assign types in semantic representation.
     if semantics is not None and self.ontology is not None:
@@ -246,57 +252,40 @@ class Lexicon(ccg_lexicon.CCGLexicon):
 
   def total_category_masses(self,
                             exponentiate=False,
-                            exclude_tokens=frozenset(),
-                            soft_propagate_roots=False):
+                            exclude_tokens=frozenset()):
     """
     Return the total weight mass assigned to each syntactic category. Shifts
     masses such that the minimum mass is zero.
 
     Args:
       exclude_tokens: Exclude entries with this token from the count.
-      soft_propagate_roots: Soft-propagate derived root categories. If there is
-        a derived root category `D0{S}` and some lexical entry `S/N`, even if
-        no entry has the category `D0{S}`, we will add a key to the returned
-        counter with category `D0{S}/N` (and zero weight).
 
     Returns:
-      masses: `Distribution` mapping from category types to masses. The minimum
-        mass value is zero and the maximum is unbounded.
+      categs: List of categories.
+      masses: 1D Tensor of per-category weights.
     """
-    ret = Distribution()
-    # Track categories with root yield.
-    rooted_cats = set()
+    categs = list(self.observed_categories)
+    categ_to_idx = dict(zip(categs, range(len(categs))))
+    ret = T.zeros(len(categs))
 
-    preprocess = np.exp if exponentiate else lambda x: x
+    preprocess = T.exp if exponentiate else lambda x: x
 
     for token, entries in self._entries.items():
       if token in exclude_tokens:
         continue
       for entry in entries:
-        c_yield = get_yield(entry.categ())
-        if c_yield in self._starts:
-          rooted_cats.add((c_yield, entry.categ()))
-
         if entry.weight() > 0.0:
-          ret[entry.categ()] += preprocess(entry.weight())
+          ret[categ_to_idx[entry.categ()]] += preprocess(entry.weight())
 
-    if soft_propagate_roots:
-      for c_yield, rooted_cat in rooted_cats:
-        for derived_root_cat in self._derived_categories_by_base[c_yield]:
-          soft_prop_cat = set_yield(rooted_cat, derived_root_cat)
-          # Ensure key exists.
-          ret.setdefault(soft_prop_cat, preprocess(entry.weight()))
+    return categs, ret
 
-    return ret
-
-  def observed_category_distribution(self, exclude_tokens=frozenset(),
-                                     soft_propagate_roots=False):
+  def observed_category_distribution(self, exclude_tokens=frozenset()):
     """
     Return a distribution over categories calculated using the lexicon weights.
     """
-    ret = self.total_category_masses(exclude_tokens=exclude_tokens,
-                                     soft_propagate_roots=soft_propagate_roots)
-    return ret.normalize()
+    categs, ret = self.total_category_masses(exclude_tokens=exclude_tokens)
+    ret /= ret.sum()
+    return categs, ret
 
   @property
   def start_categories(self):
@@ -310,7 +299,7 @@ class Lexicon(ccg_lexicon.CCGLexicon):
   def start(self):
     raise NotImplementedError("use #start_categories instead.")
 
-  def category_semantic_arities(self, soft_propagate_roots=False):
+  def category_semantic_arities(self):
     """
     Get the arities of semantic expressions associated with each observed
     syntactic category.
@@ -326,17 +315,8 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     }
 
     ret = {}
-    rooted_cats = set()
     for category, entries in entries_by_categ.items():
-      if get_yield(category) in self._starts:
-        rooted_cats.add((get_yield(category), category))
       ret[category] = set(get_arity(entry.semantics()) for entry in entries)
-
-    if soft_propagate_roots:
-      for c_yield, rooted_cat in rooted_cats:
-        for derived_root_cat in self._derived_categories_by_base[c_yield]:
-          new_syn = set_yield(rooted_cat, derived_root_cat)
-          ret.setdefault(new_syn, ret[rooted_cat])
 
     return ret
 
@@ -475,15 +455,6 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     lf_syntax_ngrams = self.lf_ngrams_given_syntax(**kwargs)
     lf_support = lf_syntax_ngrams.support
 
-    # Soft-propagate derived root categories.
-    for syntax in list(lf_syntax_ngrams.dists.keys()):
-      syn_yield = get_yield(syntax)
-      if syn_yield in self._starts:
-        for derived_root_cat in self._derived_categories_by_base[syn_yield]:
-          new_yield = set_yield(syntax, derived_root_cat)
-          if new_yield not in lf_syntax_ngrams:
-            lf_syntax_ngrams[new_yield] = Distribution.uniform(lf_support)
-
     # Second distribution: P(pred | root)
     lf_yield_ngrams = self.lf_ngrams(
         conditioning_fn=lambda entry: [get_yield(entry.categ())], **kwargs)
@@ -616,15 +587,7 @@ def get_candidate_categories(lex, scorer, tokens, sentence, smooth=1e-3):
   for token in tokens:
     lex.set_entries(token, [])
 
-  category_prior = lex.observed_category_distribution(
-      exclude_tokens=set(tokens), soft_propagate_roots=True)
-  if smooth is not None:
-    L.debug("Smoothing category prior with k = %g", smooth)
-    for key in category_prior.keys():
-      category_prior[key] += smooth
-    category_prior = category_prior.normalize()
-  L.debug("Smoothed category prior with soft root propagation: %s", category_prior)
-
+  FAIL = T.tensor(-np.inf)
   def score_cat_assignment(cat_assignment):
     """
     Calculate a log-probability for a joint assignment of categories to tokens.
@@ -637,23 +600,23 @@ def get_candidate_categories(lex, scorer, tokens, sentence, smooth=1e-3):
     parser = chart.WeightedCCGChartParser(lex, scorer=new_scorer, ruleset=chart.DefaultRuleSet)
     results = parser.parse(sentence, return_aux=True)
     if len(results) == 0:
-      return -np.inf
+      return FAIL
 
     # Get total probability mass of legal parses.
-    logp = logsumexp([logp for _, logp, _ in results])
+    logp = T.logsumexp(T.stack([logp for _, logp, _ in results]), 0)
     return logp
 
   # NB does not cover the case where a single token needs multiple syntactic
   # interpretations for the sentence to parse
   cat_assignment_weights = {
     cat_assignment: score_cat_assignment(cat_assignment)
-    for cat_assignment in itertools.product(category_prior.keys(), repeat=len(tokens))
+    for cat_assignment in itertools.product(lex.observed_categories, repeat=len(tokens))
   }
 
   cat_dists = defaultdict(Distribution)
   for cat_assignment, logp in cat_assignment_weights.items():
     for token, token_cat_assignment in zip(tokens, cat_assignment):
-      cat_dists[token][token_cat_assignment] += np.exp(logp)
+      cat_dists[token][token_cat_assignment] += T.exp(logp)
 
   # Normalize.
   cat_dists = {token: dist.normalize() for token, dist in cat_dists.items()}
@@ -872,7 +835,7 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
 
   # We will restrict semantic arities based on the observed arities available
   # for each category. Pre-calculate the necessary associations.
-  category_sem_arities = lex.category_semantic_arities(soft_propagate_roots=True)
+  category_sem_arities = lex.category_semantic_arities()
 
   def iter_expressions_for_arity(arity, max_depth=3, blacklist=None,
                                  **kwargs):
@@ -981,7 +944,7 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
             likelihood += np.exp(logp)
 
             # Add category priors.
-            log_prior = sum(np.log(weight) for weight in syntax_weights)
+            log_prior = sum(T.log(weight) for weight in syntax_weights)
             joint_score = log_prior + logp
             if joint_score == -np.inf:
               # Zero probability. Skip.
@@ -1058,7 +1021,7 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
   # Calculate marginal p(syntax, meaning | sentence) for each token.
   for logp, (tokens, syntaxes, meanings) in candidates:
     for token, syntax, meaning in zip(tokens, syntaxes, meanings):
-      new_entries[token][syntax, meaning] += np.exp(logp)
+      new_entries[token][syntax, meaning] += T.exp(logp)
 
   if all(len(candidates) == 0 for candidates in new_entries.values()):
     raise NoParsesError("Failed to derive any meanings for tokens %s."
