@@ -100,3 +100,35 @@ class LexiconScorer(Scorer):
       logp += T.log(prior) + T.log(likelihood)
 
     return logp
+
+
+class FrameSemanticsScorer(Scorer):
+
+  def __init__(self, lexicon, all_frames):
+    super().__init__(lexicon)
+
+    self.all_frames = all_frames
+
+    self.all_predicates = [] # TODO
+    self.predicate_to_idx = {pred: idx for idx, pred in enumerate(self.all_predicates)}
+
+    # Represent unnormalized frame distributions as an embedding layer
+    self.frame_dist = nn.Embedding(len(all_predicates), len(self.all_frames))
+    nn.init.zeros_(self.frame_dist.weight)
+
+  def forward(self, parse):
+    # TODO pass along frame somehow.
+    # TODO look up frame index.
+    ret = self.frame_dist(frame_index)
+    predicate_logps = F.log_softmax(ret)
+
+    # NB this is a hacky way to get the root verb -- might break.
+    root_verb = next(tok for tok in parse.pos()
+                     if str(tok.categ()) in ("(S\N)", "((S\N)/N)"))
+
+    score = T.zeros(())
+    for predicate in root_verb.semantics().predicates():
+      predicate_idx = 0 # TODO
+      score += predicate_logps[self.predicate_to_idx[predicate]]
+
+    return score
