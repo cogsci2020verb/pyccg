@@ -308,7 +308,8 @@ class WordLearner(object):
 
     return weighted_results
 
-  def update_with_nscl(self, sentence, model, answer, augment_lexicon_args=None, update_args=None):
+  def update_with_nscl(self, sentence, model, answer,
+                       sentence_meta=None, augment_lexicon_args=None, update_args=None):
     """
     Observe a new `sentence -> answer` pair in the context of some `model` and
     update learner weights. This function assumes that the `model` is jointly
@@ -338,6 +339,7 @@ class WordLearner(object):
 
   def update_with_nscl_cached_results(self, sentence, model, answer, parses,
                                       normalized_scores, answer_scores,
+                                      sentence_meta=None,
                                       augment_lexicon_args=None, update_args=None):
     augment_lexicon_args = augment_lexicon_args or {}
     update_args = update_args or {}
