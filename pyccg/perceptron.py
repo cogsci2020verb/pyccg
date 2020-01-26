@@ -67,40 +67,31 @@ def update_reinforce(learner, sentence, model, success_fn,
   if not weighted_results:
     raise NoParsesSyntaxError("No successful parses computed.", sentence)
 
-  evaluation_results = [success_fn(result, model) for result, _, _ in weighted_results]
-
-  loss = [reward * -logp for (_, reward), (_, logp, _)
-          in zip(evaluation_results, weighted_results)]
-  print(evaluation_results)
-  loss = T.stack(loss).sum()
-  loss.backward()
+  rewards = [success_fn(result, model)[1] for result, _, _ in weighted_results]
+  parses = [parse for parse, _, _ in weighted_results]
+  logps = [logp for _, logp, _ in weighted_results]
+  update_reinforce_with_cached_results(learner, sentence, parses, logps, rewards)
 
   return weighted_results
 
 
-def update_perceptron_with_cached_results(learner, sentence, parses, normalized_scores, answer_scores, learning_rate=10, update_method="perceptron"):
-  assert update_method == 'reinforce', 'Only reinforce is implemented for update_perceptron_with_cached_results'
+def update_reinforce_with_cached_results(learner, sentence, parses,
+                                         logps, rewards):
 
   if not parses:
-    # NB(Jiayuan Mao @ 09/19): we need to check the parsing again, since the missing lexicons might have been induced in
-    # an instance in the same batch.
-    parser = learner.make_parser()
+    # NB(Jiayuan Mao @ 09/19): we need to check the parsing again, since the
+    # missing lexicons might have been induced in an instance in the same
+    # batch.
+    parser = learner.make_parser(ruleset=chart.DefaultRuleSet)
     if len(parser.parse(sentence)) == 0:
       raise NoParsesSyntaxError("No successful parses computed.", "")
     else:
       return []
 
-  token_deltas = Counter()
-  for parse, score, answer_score in zip(parses, normalized_scores, answer_scores):
-    leaf_seq = tuple(leaf_token for _, leaf_token in parse.pos())
-    for leaf_token in leaf_seq:
-      token_deltas[leaf_token] += answer_score * score
-
-  norm = 0.0
-  for token, delta in token_deltas.items():
-    delta *= learning_rate
-    norm += delta ** 2
-    token._weight += delta
+  # Set up REINFORCE loss.
+  loss = [reward * -logp for reward, logp in zip(rewards, logps)]
+  loss = T.stack(loss).sum()
+  loss.backward()
 
   return parses
 
@@ -130,17 +121,19 @@ def _update_distant_success_fn(parse_result, model, answer):
   return success, answer_score
 
 
-def update_perceptron_nscl(learner, sentence, model, answer,
+def update_nscl(learner, sentence, model, answer,
                               **update_perceptron_kwargs):
 
   L.debug("Desired answer: %s", answer)
   success_fn = functools.partial(_update_perceptron_distant_success_fn, answer=answer)
-  return update_perceptron(learner, sentence, model, success_fn, **update_perceptron_kwargs)
+  return update_reinforce(learner, sentence, model, success_fn, **update_perceptron_kwargs)
 
 
-def update_perceptron_nscl_with_cached_results(learner, sentence, model, parses, normalized_scores, answer_scores, **update_perceptron_kwargs):
+def update_nscl_with_cached_results(learner, sentence, model, parses,
+    normalized_scores, answer_scores, **update_perceptron_kwargs):
   # sentence and model will be ignored.
-  return update_perceptron_with_cached_results(learner, sentence, parses, normalized_scores, answer_scores, **update_perceptron_kwargs)
+  return update_with_cached_results(learner, sentence, parses,
+      normalized_scores, answer_scores, **update_perceptron_kwargs)
 
 
 def update_distant(learner, sentence, model, answer,

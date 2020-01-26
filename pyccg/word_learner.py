@@ -11,7 +11,7 @@ from pyccg.lexicon import predict_zero_shot, \
     augment_lexicon_nscl, augment_lexicon_distant, augment_lexicon_cross_situational, augment_lexicon_2afc, \
     build_bootstrap_likelihood
 from pyccg.perceptron import \
-    update_perceptron_nscl, update_perceptron_nscl_with_cached_results, \
+    update_nscl, update_nscl_with_cached_results, \
     update_distant, update_perceptron_cross_situational, update_perceptron_2afc
 from pyccg.scorers import LexiconScorer
 from pyccg.util import Distribution, NoParsesError, NoParsesSyntaxError
@@ -336,7 +336,9 @@ class WordLearner(object):
         augment_lexicon_args=augment_lexicon_args,
         update_args=update_args)
 
-  def update_with_nscl_cached_results(self, sentence, model, answer, parses, normalized_scores, answer_scores, augment_lexicon_args=None, update_args=None):
+  def update_with_nscl_cached_results(self, sentence, model, answer, parses,
+                                      normalized_scores, answer_scores,
+                                      augment_lexicon_args=None, update_args=None):
     augment_lexicon_args = augment_lexicon_args or {}
     update_args = update_args or {}
 
