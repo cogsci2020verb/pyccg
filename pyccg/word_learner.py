@@ -80,7 +80,7 @@ class WordLearner(object):
                                         scorer=self.scorer,
                                         ruleset=ruleset)
 
-  def prepare_lexical_induction(self, sentence):
+  def prepare_lexical_induction(self, sentence, sentence_meta=None):
     """
     Find the tokens in a sentence which need to be updated such that the
     sentence will parse.
@@ -101,6 +101,7 @@ class WordLearner(object):
       L.info("Novel words: %s", " ".join(query_tokens))
       query_token_syntaxes = get_candidate_categories(
           self.lexicon, self.scorer, query_tokens, sentence,
+          sentence_meta=sentence_meta,
           smooth=self.syntax_prior_smooth)
 
       return query_tokens, query_token_syntaxes
@@ -115,6 +116,7 @@ class WordLearner(object):
     for token in sentence:
       query_token_syntaxes.update(
           get_candidate_categories(self.lexicon, [token], sentence,
+                                   sentence_meta=sentence_meta,
                                    smooth=self.syntax_prior_smooth))
 
     # Sort query token list by increasing maximum weight of existing lexical
@@ -129,6 +131,7 @@ class WordLearner(object):
         "unable to find new entries which will make the sentence parse: %s" % sentence)
 
   def do_lexical_induction(self, sentence, model, augment_lexicon_fn,
+                           sentence_meta=None,
                            **augment_lexicon_args):
     """
     Perform necessary lexical induction such that `sentence` can be parsed
@@ -142,7 +145,7 @@ class WordLearner(object):
 
     # Find tokens for which we need to insert lexical entries.
     query_tokens, query_token_syntaxes = \
-        self.prepare_lexical_induction(sentence)
+        self.prepare_lexical_induction(sentence, sentence_meta=sentence_meta)
     L.info("Inducing new lexical entries for words: %s", ", ".join(query_tokens))
 
     # Augment the lexicon with all entries for novel words which yield the
@@ -154,6 +157,7 @@ class WordLearner(object):
       lex = augment_lexicon_fn(self.lexicon, query_tokens, query_token_syntaxes,
                               sentence, self.ontology, model,
                               self._build_likelihood_fns(sentence, model),
+                              sentence_meta=sentence_meta,
                               beta=self.beta,
                               **augment_lexicon_args)
     except NoParsesError:

@@ -568,7 +568,8 @@ def set_yield(category, new_yield):
     raise ValueError("unknown category type of instance %r" % category)
 
 
-def get_candidate_categories(lex, scorer, tokens, sentence, smooth=1e-3):
+def get_candidate_categories(lex, scorer, tokens, sentence,
+                             sentence_meta=None, smooth=1e-3):
   """
   Find candidate categories for the given tokens which appear in `sentence` such
   that `sentence` yields a parse.
@@ -604,7 +605,7 @@ def get_candidate_categories(lex, scorer, tokens, sentence, smooth=1e-3):
 
     # Attempt a parse.
     parser = chart.WeightedCCGChartParser(lex, scorer=new_scorer, ruleset=chart.DefaultRuleSet)
-    results = parser.parse(sentence, return_aux=True)
+    results = parser.parse(sentence, sentence_meta=sentence_meta, return_aux=True)
     if len(results) == 0:
       return FAIL
 
@@ -986,7 +987,7 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
 
 def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
                     sentence, ontology, model, likelihood_fns,
-                    beta=3.0,
+                    sentence_meta=None, beta=3.0,
                     **predict_zero_shot_args):
   """
   Augment a lexicon with candidate meanings for a given word using an abstract
@@ -1026,7 +1027,9 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
 
   ranked_candidates, dummy_vars = \
       predict_zero_shot(lex, query_tokens, query_token_syntaxes, sentence,
-                        ontology, model, likelihood_fns, **predict_zero_shot_args)
+                        ontology, model, likelihood_fns,
+                        sentence_meta=sentence_meta,
+                        **predict_zero_shot_args)
 
   candidates = sorted(ranked_candidates.queue, key=lambda item: -item[0])
   new_entries = {token: Counter() for token in query_tokens}
