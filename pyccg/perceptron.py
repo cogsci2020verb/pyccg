@@ -125,7 +125,7 @@ def update_nscl(learner, sentence, model, answer,
                               **update_perceptron_kwargs):
 
   L.debug("Desired answer: %s", answer)
-  success_fn = functools.partial(_update_perceptron_distant_success_fn, answer=answer)
+  success_fn = functools.partial(_update_distant_success_fn, answer=answer)
   return update_reinforce(learner, sentence, model, success_fn, **update_perceptron_kwargs)
 
 

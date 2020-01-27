@@ -41,6 +41,11 @@ class Scorer(nn.Module):
     else:
       raise ValueError("Don't know how to score parse of type %s: %s" % (type(parse), parse))
 
+  def __add__(self, scorer):
+    if isinstance(self, CompositeScorer):
+      pass
+    ...
+
   def clone_with_lexicon(self, lexicon):
     clone = copy(self)
     clone.lexicon = lexicon
@@ -59,6 +64,18 @@ class Scorer(nn.Module):
     Returns `numpy.ndarray` of floats with the same length as `parses`.
     """
     return np.array([self.score(parse) for parse in parses])
+
+
+class CompositeScorer(Scorer):
+  """
+  Scorer which composes multiple independent scorers.
+  """
+
+  # TODO define
+  def __init__(self, scorers):
+    ...
+
+  def forward(self, parse): ...
 
 
 class LexiconScorer(Scorer):
@@ -124,7 +141,7 @@ class FrameSemanticsScorer(Scorer):
 
     # NB this is a hacky way to get the root verb -- might break.
     root_verb = next(tok for tok in parse.pos()
-                     if str(tok.categ()) in ("(S\N)", "((S\N)/N)"))
+                     if str(tok.categ()) in (r"(S\N)", r"((S\N)/N)"))
 
     score = T.zeros(())
     for predicate in root_verb.semantics().predicates():

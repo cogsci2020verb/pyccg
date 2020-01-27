@@ -333,7 +333,7 @@ class WordLearner(object):
     return self._update_with_example(
         sentence, model,
         augment_lexicon_fn=augment_lexicon_nscl,
-        update_fn=update_perceptron_nscl,
+        update_fn=update_nscl,
         augment_lexicon_args=augment_lexicon_args,
         update_args=update_args)
 
@@ -352,7 +352,7 @@ class WordLearner(object):
     return self._update_with_example(
         sentence, model,
         augment_lexicon_fn=augment_lexicon_nscl,
-        update_fn=update_perceptron_nscl_with_cached_results,
+        update_fn=update_nscl_with_cached_results,
         augment_lexicon_args=augment_lexicon_args,
         update_args=update_args
     )
