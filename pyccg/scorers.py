@@ -91,13 +91,7 @@ class LexiconScorer(Scorer):
   from lexicon weights.
   """
 
-  def __init__(self, lexicon, update_method="perceptron"):
-    # TODO ensure that lexicon weights are tensors
-
-    super().__init__(lexicon)
-    self.update_method = update_method
-
-  def forward(self, parse):
+  def forward(self, parse, sentence_meta=None):
     categs, categ_priors = self._lexicon.total_category_masses()
     categ_priors = F.softmax(categ_priors)
     categ_to_idx = dict(zip(categs, range(len(categs))))

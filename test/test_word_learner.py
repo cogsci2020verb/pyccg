@@ -10,7 +10,7 @@ from pyccg.scorers import LexiconScorer
 from pyccg.word_learner import *
 
 
-def _make_mock_learner(update_method="perceptron", **kwargs):
+def _make_mock_learner(**kwargs):
   ## Specify ontology.
   types = log.TypeSystem(["object", "location", "boolean", "action"])
   functions = [
@@ -33,7 +33,7 @@ def _make_mock_learner(update_method="perceptron", **kwargs):
   away => N {away}
   """, ontology=ont, include_semantics=True)
 
-  scorer = LexiconScorer(lexicon, update_method=update_method)
+  scorer = LexiconScorer(lexicon)
 
   return WordLearner(lexicon, scorer=scorer, **kwargs)
 
@@ -74,7 +74,7 @@ def test_update_distant_existing_words_reinforce():
   sentence = "goto there".split()
   answer = ("go", "there")
 
-  learner = _make_mock_learner(update_method="reinforce")
+  learner = _make_mock_learner()
   old_lex = learner.lexicon.clone()
 
   model = _make_mock_model(learner)
