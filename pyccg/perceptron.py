@@ -105,7 +105,7 @@ def _update_distant_success_fn(parse_result, model, answer):
     else:
       pred_answer = model.evaluate(root_token.semantics())
       success = pred_answer == answer
-      answer_score = float(success)
+      answer_score = np.log(float(success))
 
   except (TypeError, AttributeError) as e:
     # Type inconsistency. TODO catch this in the iter_expression
@@ -131,7 +131,7 @@ def update_nscl(learner, sentence, model, answer,
 def update_nscl_with_cached_results(learner, sentence, model, parses,
     normalized_scores, answer_scores, **update_perceptron_kwargs):
   # sentence and model will be ignored.
-  return update_with_cached_results(learner, sentence, parses,
+  return update_reinforce_with_cached_results(learner, sentence, parses,
       normalized_scores, answer_scores, **update_perceptron_kwargs)
 
 

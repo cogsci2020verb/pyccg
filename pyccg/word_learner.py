@@ -255,7 +255,6 @@ class WordLearner(object):
     try:
       weighted_results = update_fn(
           self, sentence, model,
-          learning_rate=self.learning_rate,
           **update_args)
     except NoParsesSyntaxError as e:
       # No parse succeeded -- attempt lexical induction.
@@ -284,7 +283,6 @@ class WordLearner(object):
       try:
         weighted_results = update_fn(
             self, sentence, model,
-            learning_rate=self.learning_rate,
             **update_args)
       except NoParsesError as e:
         # TODO attempt lexical induction?
