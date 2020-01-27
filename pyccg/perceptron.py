@@ -76,7 +76,7 @@ def update_reinforce(learner, sentence, model, success_fn,
 
 
 def update_reinforce_with_cached_results(learner, sentence, parses,
-                                         logps, rewards):
+                                         logps, rewards, learning_rate=None):
 
   if not parses:
     # NB(Jiayuan Mao @ 09/19): we need to check the parsing again, since the
@@ -125,14 +125,14 @@ def update_nscl(learner, sentence, model, answer,
                               **update_perceptron_kwargs):
 
   L.debug("Desired answer: %s", answer)
-  success_fn = functools.partial(_update_perceptron_distant_success_fn, answer=answer)
+  success_fn = functools.partial(_update_distant_success_fn, answer=answer)
   return update_reinforce(learner, sentence, model, success_fn, **update_perceptron_kwargs)
 
 
 def update_nscl_with_cached_results(learner, sentence, model, parses,
     normalized_scores, answer_scores, **update_perceptron_kwargs):
   # sentence and model will be ignored.
-  return update_with_cached_results(learner, sentence, parses,
+  return update_reinforce_with_cached_results(learner, sentence, parses,
       normalized_scores, answer_scores, **update_perceptron_kwargs)
 
 

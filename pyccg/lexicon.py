@@ -639,7 +639,6 @@ def attempt_candidate_parse(lexicon, tokens, candidate_categories,
       token).
     sentence: Sentence which we are attempting to parse.
   """
-
   get_arity = (lexicon.ontology and lexicon.ontology.get_expr_arity) \
       or get_semantic_arity
 
@@ -758,9 +757,8 @@ def build_distant_likelihood(answer):
   def likelihood_fn(tokens, categories, exprs, sentence_parse, model):
     try:
       success = model.evaluate(sentence_parse) == answer
-    except:
+    except Exception as e:
       success = None
-
     return 0.0 if success == True else -np.inf
 
   return likelihood_fn
@@ -905,7 +903,7 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
         syntax_weights = [candidate_syntaxes[token][cat] for token, cat in zip(token_comb, syntax_comb)]
         if any(weight == 0 for weight in syntax_weights):
           continue
-
+        
         # Attempt to parse with this joint syntactic assignment, and return the
         # resulting syntactic parses + sentence-level semantic forms, with
         # dummy variables in place of where the candidate expressions will go.
@@ -914,7 +912,7 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
                                           sentence,
                                           dummy_vars)
         category_parse_results[syntax_comb] = results
-
+        
         # Now enumerate semantic forms.
         # candidate_exprs = tuple(list(iter_expressions_for_category(cat))
         #                         for cat in syntax_comb)
@@ -932,13 +930,13 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
               dummy_var = dummy_vars[token]
               sentence_semantics = sentence_semantics.replace(dummy_var, token_expr)
             sentence_semantics = sentence_semantics.simplify()
-
+            
             try:
               lex.ontology.typecheck(sentence_semantics)
             except l.TypeException as exc:
               continue
 
-            print('SUCCESS: ' + '; '.join([f'{t} => {str(s)} [{str(e)}]' for t, s, e in zip(token_comb, syntax_comb, expr_comb)]), sentence_semantics, sep='\n', end='\n' + '-'*120 + '\n')
+            # print('SUCCESS: ' + '; '.join([f'{t} => {str(s)} [{str(e)}]' for t, s, e in zip(token_comb, syntax_comb, expr_comb)]), sentence_semantics, sep='\n', end='\n' + '-'*120 + '\n')
 
             # Compute p(meaning | syntax, sentence, parse)
             logp = sum(likelihood_fn(token_comb, syntax_comb, expr_comb,
@@ -1017,7 +1015,7 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
   ranked_candidates, dummy_vars = \
       predict_zero_shot(lex, query_tokens, query_token_syntaxes, sentence,
                         ontology, model, likelihood_fns, **predict_zero_shot_args)
-
+  
   candidates = sorted(ranked_candidates.queue, key=lambda item: -item[0])
   new_entries = {token: Counter() for token in query_tokens}
 
@@ -1053,9 +1051,10 @@ def augment_lexicon_nscl(
     old_lex, query_tokens, query_token_syntaxes,
     sentence, ontology, model, likelihood_fns, answer,
     **augment_kwargs):
-
-  likelihood_fns = (build_typecheck_likelihood(answer),) + tuple(likelihood_fns)
-
+  # likelihood_fns = (build_typecheck_likelihood(answer),) + tuple(likelihood_fns)
+  likelihood_fns = (build_distant_likelihood(answer),) + \
+        tuple(likelihood_fns)
+  
   return augment_lexicon(
         old_lex, query_tokens, query_token_syntaxes,
         sentence, ontology, model, likelihood_fns,

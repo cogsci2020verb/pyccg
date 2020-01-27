@@ -124,7 +124,7 @@ class FrameSemanticsScorer(Scorer):
 
     # NB this is a hacky way to get the root verb -- might break.
     root_verb = next(tok for tok in parse.pos()
-                     if str(tok.categ()) in ("(S\N)", "((S\N)/N)"))
+                     if str(tok.categ()) in (r"(S\N)", r"((S\N)/N)"))
 
     score = T.zeros(())
     for predicate in root_verb.semantics().predicates():

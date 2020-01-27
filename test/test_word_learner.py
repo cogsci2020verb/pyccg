@@ -178,3 +178,9 @@ def test_update_distant_two_novel_words():
     entries = learner.lexicon._entries[token]
     eq_(set([(str(e.categ()), str(e.semantics())) for e in entries]),
         expected)
+
+def main():
+    test_update_distant_existing_words_reinforce()
+    
+if __name__ == '__main__':
+    main()
