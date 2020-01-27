@@ -6,6 +6,8 @@ import itertools
 from queue import PriorityQueue
 
 import numpy as np
+import torch as T
+from torch.nn import functional as F
 
 
 class NoParsesError(Exception):
@@ -21,16 +23,19 @@ class NoParsesSyntaxError(NoParsesError):
   pass
 
 
-class Distribution(Counter):
+class Distribution(defaultdict):
   """
   Weight distribution with discrete support.
   """
+
+  def __init__(self):
+    super().__init__(lambda: T.zeros((), requires_grad=False))
 
   @classmethod
   def uniform(cls, support):
     ret = cls()
     for key in support:
-      ret[key] = 1 / len(support)
+      ret[key] = T.tensor(1 / len(support), requires_grad=False)
     return ret
 
   @property
@@ -40,11 +45,13 @@ class Distribution(Counter):
   def ensure_support(self, keys):
     for key in keys:
       if key not in self:
-        self[key] = 0.
+        self[key] = T.zeros((), requires_grad=False)
 
     return self
 
   def __mul__(self, scale):
+    if isinstance(scale, T.Tensor):
+      scale = scale.item()
     assert isinstance(scale, (int, float))
 
     ret = Distribution()
@@ -206,12 +213,18 @@ class UniquePriorityQueue(PriorityQueue):
     return ret
 
 
-def softmax(arr, axis=-1):
-    assert axis == -1
-    arr = arr - arr.max(axis=axis)
-    arr = np.exp(arr)
-    arr /= arr.sum(axis=axis, keepdims=True)
-    return arr
+def softmax(obj, dim=None):
+  return_dict = False
+  if isinstance(obj, dict):
+    return_dict = True
+    keys = list(obj.keys())
+    obj = list(obj.values())
+
+  obj = F.softmax(obj, dim=dim)
+
+  if return_dict:
+    return dict(zip(keys, obj))
+  return obj
 
 
 class tuple_unordered(tuple):

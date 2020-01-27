@@ -1,5 +1,6 @@
 from copy import deepcopy
 import itertools
+import operator
 
 from nltk.ccg import chart as nchart
 from nltk.parse.chart import AbstractChartRule, Chart, EdgeI
@@ -9,6 +10,7 @@ import numpy as np
 from pyccg import Token
 from pyccg.combinator import *
 from pyccg.logic import *
+from pyccg.scorers import LexiconScorer
 
 
 printCCGDerivation = nchart.printCCGDerivation
@@ -210,7 +212,8 @@ class WeightedCCGChartParser(nchart.CCGChartParser):
   semantics but share syntactic categories.
   """
 
-  def __init__(self, lexicon, ruleset=None, *args, **kwargs):
+  def __init__(self, lexicon, scorer=None,
+               ruleset=None, *args, **kwargs):
     if ruleset is None:
       ruleset = ApplicationRuleSet
 
@@ -220,6 +223,10 @@ class WeightedCCGChartParser(nchart.CCGChartParser):
         rule.set_ontology(lexicon.ontology)
 
     super().__init__(lexicon, ruleset, *args, **kwargs)
+
+    if scorer is None:
+      scorer = LexiconScorer(lexicon)
+    self.scorer = scorer
 
   def _parse_inner(self, chart):
     """
@@ -289,23 +296,6 @@ class WeightedCCGChartParser(nchart.CCGChartParser):
         # Track which edge values were used to generate these parses.
         used_edges.extend([edge_sequence] * len(partial_results))
 
-    # Score using Bayes' rule, calculated with lexicon weights.
-    cat_priors = self._lexicon.observed_category_distribution()
-    total_cat_masses = self._lexicon.total_category_masses()
-    def score_parse(parse):
-      score = 0.0
-      for _, token in parse.pos():
-        if total_cat_masses[token.categ()] == 0:
-          return -np.inf
-        # TODO not the same scoring logic as in novel word induction .. an
-        # ideal Bayesian model would have these aligned !! (No smoothing here)
-        likelihood = max(token.weight(), 1e-6) / total_cat_masses[token.categ()]
-        logp = 0.5 * np.log(cat_priors[token.categ()])
-        logp += np.log(likelihood)
-
-        score += logp
-      return score
-
     # TODO: Typechecking should be enforced *during* the parse.
     def typecheck_parse(parse):
         sentence_semantics = parse.label()[0].semantics()
@@ -322,11 +312,12 @@ class WeightedCCGChartParser(nchart.CCGChartParser):
 
     results = [p for p in results if typecheck_parse(p)]
 
-    results = sorted(results, key=score_parse, reverse=True)
+    scores = [self.scorer(parse) for parse in results]
+    results = sorted(zip(scores, results), key=operator.itemgetter(0), reverse=True)
     if not return_aux:
-      return results
-    return [(parse, score_parse(parse), used_edges_i)
-            for parse, used_edges_i in zip(results, used_edges)]
+      return [parse for _, parse in results]
+    return [(parse, score, used_edges_i)
+            for (score, parse), used_edges_i in zip(results, used_edges)]
 
 
 def get_clean_parse_tree(ccg_chart_result):

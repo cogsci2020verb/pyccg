@@ -185,38 +185,38 @@ def test_propagate_derived_category_distinctively():
   eq_(len(lex._entries["durp"]), 1)
 
 
-def test_soft_propagate_root_categories():
-  """
-  Derived categories with the root category as a base should only
-  soft-propagate. We shouldn't see lexical entries hard-propagated -- it should
-  only show up in `total_category_masses` and downstream methods.
-  """
-  lex = Lexicon.fromstring(r"""
-  :- S, PP, NP
+# def test_soft_propagate_root_categories():
+#   """
+#   Derived categories with the root category as a base should only
+#   soft-propagate. We shouldn't see lexical entries hard-propagated -- it should
+#   only show up in `total_category_masses` and downstream methods.
+#   """
+#   lex = Lexicon.fromstring(r"""
+#   :- S, PP, NP
 
-  the => S/NP {\x.unique(x)}
-  that => S/NP/PP {\x y.unique(x)}
+#   the => S/NP {\x.unique(x)}
+#   that => S/NP/PP {\x y.unique(x)}
 
-  derp => PP/NP {\a.derp(a)}
-  dorp => PP/NP {\a.dorp(a)}
-  darp => PP/NP {\a.darp(a)}
-  durp => PP/NP {\a.durp(a)}
-  """, include_semantics=True)
+#   derp => PP/NP {\a.derp(a)}
+#   dorp => PP/NP {\a.dorp(a)}
+#   darp => PP/NP {\a.darp(a)}
+#   durp => PP/NP {\a.durp(a)}
+#   """, include_semantics=True)
 
-  # Induce a derived category involving `the`.
-  involved_tokens = [lex._entries["the"][0]]
-  derived_categ = lex.add_derived_category(involved_tokens)
-  cat_obj, _ = lex._derived_categories[derived_categ]
-  lex.propagate_derived_category(derived_categ)
+#   # Induce a derived category involving `the`.
+#   involved_tokens = [lex._entries["the"][0]]
+#   derived_categ = lex.add_derived_category(involved_tokens)
+#   cat_obj, _ = lex._derived_categories[derived_categ]
+#   lex.propagate_derived_category(derived_categ)
 
-  # Sanity checks
-  eq_(len(lex._entries["the"]), 2)
-  eq_(len(lex._entries["that"]), 1,
-      "Derived category with root base should not hard-propagate.")
+#   # Sanity checks
+#   eq_(len(lex._entries["the"]), 2)
+#   eq_(len(lex._entries["that"]), 1,
+#       "Derived category with root base should not hard-propagate.")
 
-  expected = set_yield(lex.parse_category("S/NP/PP"), cat_obj)
-  ok_(expected not in lex.total_category_masses(soft_propagate_roots=False))
-  ok_(expected in lex.total_category_masses(soft_propagate_roots=True))
+#   expected = set_yield(lex.parse_category("S/NP/PP"), cat_obj)
+#   ok_(expected not in lex.total_category_masses(soft_propagate_roots=False))
+#   ok_(expected in lex.total_category_masses(soft_propagate_roots=True))
 
 
 def test_get_lf_unigrams():
@@ -229,13 +229,15 @@ def test_get_lf_unigrams():
     """, include_semantics=True)
 
   expected = {
-    "NN": Counter({"and_": 2 / 6, "object": 2 / 6, "sphere": 1 / 6, "cube": 1 / 6, None: 0.0, "unique": 0.0}),
-    "(NN/NN)": Counter({"unique": 1, "cube": 0.0, "object": 0.0, "sphere": 0.0, "and_": 0.0, None: 0.0})
+    "NN": {"and_": 2 / 6, "object": 2 / 6, "sphere": 1 / 6, "cube": 1 / 6, "None": 0.0, "unique": 0.0},
+    "(NN/NN)": {"unique": 1, "cube": 0.0, "object": 0.0, "sphere": 0.0, "and_": 0.0, "None": 0.0}
   }
 
   ngrams = lex.lf_ngrams_given_syntax(order=1, smooth=False)
   for categ, dist in ngrams.dists.items():
-    eq_(dist, expected[str(categ)])
+    eq_(set([str(c) for c in dist.keys()]), set(expected[str(categ)].keys()))
+    for pred in dist:
+      np.testing.assert_almost_equal(dist[pred].item(), expected[str(categ)][str(pred)])
 
 
 def test_get_yield():
