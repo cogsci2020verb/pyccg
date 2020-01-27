@@ -177,7 +177,7 @@ class FrameSemanticsScorer(Scorer):
     self.predicate_to_idx = {pred: idx for idx, pred in enumerate(self.predicates)}
 
     # Represent unnormalized frame distributions as an embedding layer
-    self.frame_dist = nn.Embedding(len(self.predicates), len(self.frames))
+    self.frame_dist = nn.Embedding(len(self.frames), len(self.predicates))
     nn.init.zeros_(self.frame_dist.weight)
 
   def parameters(self):
