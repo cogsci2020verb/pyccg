@@ -941,7 +941,7 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
             except l.TypeException as exc:
               continue
 
-            print('SUCCESS: ' + '; '.join([f'{t} => {str(s)} [{str(e)}]' for t, s, e in zip(token_comb, syntax_comb, expr_comb)]), sentence_semantics, sep='\n', end='\n' + '-'*120 + '\n')
+            # print('SUCCESS: ' + '; '.join([f'{t} => {str(s)} [{str(e)}]' for t, s, e in zip(token_comb, syntax_comb, expr_comb)]), sentence_semantics, sep='\n', end='\n' + '-'*120 + '\n')
 
             # Compute p(meaning | syntax, sentence, parse)
             logp = sum(likelihood_fn(token_comb, syntax_comb, expr_comb,
@@ -973,7 +973,6 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
     if candidate_queue.qsize() > 0:
       # We have a result. Quit and don't search at higher depth.
       return candidate_queue, dummy_vars
-
   return candidate_queue, dummy_vars
 
 

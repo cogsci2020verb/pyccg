@@ -105,7 +105,7 @@ class WordLearner(object):
     query_tokens, query_token_syntaxes = list(set(sentence)), {}
     for token in sentence:
       query_token_syntaxes.update(
-          get_candidate_categories(self.lexicon, [token], sentence,
+          get_candidate_categories(self.lexicon, self.scorer, [token], sentence,
                                    smooth=self.syntax_prior_smooth))
 
     # Sort query token list by increasing maximum weight of existing lexical
