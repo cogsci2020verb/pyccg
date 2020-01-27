@@ -799,7 +799,10 @@ def build_distant_likelihood(answer):
   """
   def likelihood_fn(tokens, categories, exprs, sentence_parse, model):
     try:
-      success = model.evaluate(sentence_parse) == answer
+      if hasattr(model, 'evaluate_and_score'):
+        success, _ = model.evaluate_and_score(sentence_parse, answer)
+      else:
+        success = model.evaluate(sentence_parse) == answer
     except:
       success = None
 
@@ -1096,7 +1099,11 @@ def augment_lexicon_nscl(
     sentence, ontology, model, likelihood_fns, answer,
     **augment_kwargs):
 
-  likelihood_fns = (build_typecheck_likelihood(answer),) + tuple(likelihood_fns)
+  # TODO(Jiayuan Mao @ 01/28): add the distant function....
+  likelihood_fns = (
+    build_typecheck_likelihood(answer),
+    build_distant_likelihood(answer)
+  ) + tuple(likelihood_fns)
 
   return augment_lexicon(
         old_lex, query_tokens, query_token_syntaxes,
