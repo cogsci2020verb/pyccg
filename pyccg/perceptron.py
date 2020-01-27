@@ -135,7 +135,7 @@ def update_perceptron(lexicon, sentence, model, success_fn,
 
 
 def update_perceptron_with_cached_results(lexicon, sentence, parses, normalized_scores, answer_scores, learning_rate=10, update_method="perceptron"):
-  assert update_method == 'reinforce', 'Only reinforce is implemented for update_perceptron_with_cached_results'
+  # assert update_method == 'reinforce', 'Only reinforce is implemented for update_perceptron_with_cached_results'
 
   if not parses:
     # NB(Jiayuan Mao @ 09/19): we need to check the parsing again, since the missing lexicons might have been induced in
