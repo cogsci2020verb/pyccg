@@ -627,7 +627,7 @@ def get_candidate_categories(lex, scorer, tokens, sentence, smooth=1e-3):
 
 
 def attempt_candidate_parse(lexicon, tokens, candidate_categories,
-                            sentence, dummy_vars):
+                            sentence, dummy_vars, sentence_meta=None):
   """
   Attempt to parse a sentence, mapping `tokens` to new candidate
   lexical entries.
@@ -655,7 +655,7 @@ def attempt_candidate_parse(lexicon, tokens, candidate_categories,
 
   # First attempt a parse with only function application rules.
   results = chart.WeightedCCGChartParser(lexicon, ruleset=chart.ApplicationRuleSet) \
-      .parse(sentence)
+      .parse(sentence, sentence_meta=sentence_meta)
   if True:#results or not allow_composition:
     return results
 
@@ -801,7 +801,10 @@ def likelihood_2afc(tokens, categories, exprs, sentence_parse, models):
 
 
 def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
-                      model, likelihood_fns, queue_limit=5, iter_expressions_args=None):
+                      model, likelihood_fns,
+                      sentence_meta=None,
+                      queue_limit=5,
+                      iter_expressions_args=None):
   """
   Make zero-shot predictions of the posterior `p(syntax, meaning | sentence)`
   for each of `tokens`.
@@ -915,7 +918,8 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
         results = attempt_candidate_parse(lex, token_comb,
                                           syntax_comb,
                                           sentence,
-                                          dummy_vars)
+                                          dummy_vars,
+                                          sentence_meta=sentence_meta)
         category_parse_results[syntax_comb] = results
 
         # Now enumerate semantic forms.
