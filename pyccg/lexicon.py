@@ -57,7 +57,7 @@ COMMENTS_RE = re.compile('''([^#]*)(?:#.*)?''')
 
 class Lexicon(ccg_lexicon.CCGLexicon):
 
-  def __init__(self, starts, primitives, families, entries, ontology=None):
+  def __init__(self, starts, primitives, families, entries, has_semantics, ontology=None):
     """
     Create a new Lexicon.
 
@@ -75,6 +75,8 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     self._primitives = primitives
     self._families = families
     self._entries = entries
+
+    self.has_semantics = has_semantics
 
     self.ontology = None
     if ontology is not None:
@@ -144,7 +146,7 @@ class Lexicon(ccg_lexicon.CCGLexicon):
           # Word definition
           # ie, which => (N\N)/(S/NP)
           entries[ident].append(Token(ident, cat, semantics, weight=weight))
-    return cls(starts, primitives, families, entries,
+    return cls(starts, primitives, families, entries, has_semantics=include_semantics,
                ontology=ontology)
 
   def get_entries(self, word):
@@ -201,6 +203,7 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     Return a clone of the current lexicon instance.
     """
     ret = deepcopy(self)
+    ret.has_semantics = retain_semantics
 
     if not retain_semantics:
       for entry_tokens in ret._entries.values():

@@ -5,6 +5,7 @@ updating weights in virtue of success / failure of parses.
 
 from collections import Counter
 from copy import copy
+import logging
 
 from nltk.tree import Tree
 import numpy as np
@@ -14,11 +15,11 @@ from torch.nn import functional as F
 
 from pyccg import logic as l
 
+L = logging.getLogger(__name__)
+
 
 # TODO feature: support partial parses, so that chart parser can use a Scorer
 # to prune
-
-# TODO feature: more explicitly handle log-probs vs scores
 
 
 class Scorer(nn.Module):
@@ -51,6 +52,12 @@ class Scorer(nn.Module):
     return CompositeScorer(scorer, self)
 
   def clone_with_lexicon(self, lexicon):
+    if self.requires_semantics and not lexicon.has_semantics:
+      # Check that the lexicon assigns semantic representations
+      L.warn("Semantics-sensitive scorer is being cloned with a semantics-free lexicon. "
+             "Going to return an empty scorer.")
+      return EmptyScorer(lexicon)
+
     clone = copy(self)
     clone.lexicon = lexicon
     return clone
@@ -73,6 +80,11 @@ class Scorer(nn.Module):
                      for parse, sentence_meta in zip(parses, sentence_metas)])
 
 
+class EmptyScorer(Scorer):
+  def forward(self, parse):
+    return T.zeros(())
+
+
 class CompositeScorer(Scorer):
   """
   Scorer which composes multiple independent scorers.
@@ -84,6 +96,14 @@ class CompositeScorer(Scorer):
   def __add__(self, scorer):
     self.scorers.append(scorer)
 
+  def clone_with_lexicon(self, lexicon):
+    scorers = [scorer.clone_with_lexicon(lexicon) for scorer in self.scorers]
+    scorers = [scorer for scorer in scorers if not isinstance(scorer, EmptyScorer)]
+
+    if len(scorers) == 0:
+      return EmptyScorer(lexicon)
+    return CompositeScorer(*scorers)
+
   def parameters(self):
     ret = []
     for scorer in self.scorers:
@@ -91,7 +111,7 @@ class CompositeScorer(Scorer):
     return ret
 
   def forward(self, parse, sentence_meta=None):
-    return sum(scorer(parse, sentence_meta=sentence_meta) for scorer in self.scorers)
+    return T.zeros(()) + sum(scorer(parse, sentence_meta=sentence_meta) for scorer in self.scorers)
 
 
 class LexiconScorer(Scorer):
@@ -133,6 +153,8 @@ class LexiconScorer(Scorer):
 
 
 class FrameSemanticsScorer(Scorer):
+
+  requires_semantics = True
 
   def __init__(self, lexicon, frames, root_types=(r"(S\N)", r"((S\N)/N)")):
     """
