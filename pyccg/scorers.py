@@ -31,39 +31,44 @@ class Scorer(nn.Module):
   """
 
   def __init__(self, lexicon):
+    super().__init__()
     self._lexicon = lexicon
 
-  def __call__(self, parse):
+  def __call__(self, parse, sentence_meta=None):
     if isinstance(parse, Tree):
-      return self.score(parse)
+      return self.score(parse, sentence_meta=sentence_meta)
     elif isinstance(parse, list):
-      return self.score_batch(parse)
+      return self.score_batch(parse, sentence_meta=sentence_meta)
     else:
       raise ValueError("Don't know how to score parse of type %s: %s" % (type(parse), parse))
 
   def __add__(self, scorer):
-    if isinstance(self, CompositeScorer):
-      pass
-    ...
+    if isinstance(scorer, CompositeScorer):
+      # We're not a CompositeScorer. Let this scorer absorb us.
+      return scorer + self
+    return CompositeScorer(scorer, self)
 
   def clone_with_lexicon(self, lexicon):
     clone = copy(self)
     clone.lexicon = lexicon
     return clone
 
-  def forward(self, parse):
+  def forward(self, parse, sentence_meta=None):
     raise NotImplementedError()
 
-  def score(self, parse):
-    return self.forward(parse)
+  def score(self, parse, sentence_meta=None):
+    return self.forward(parse, sentence_meta=sentence_meta)
 
-  def score_batch(self, parses):
+  def score_batch(self, parses, sentence_metas=None):
     """
     Score a batch of predicted parses.
 
     Returns `numpy.ndarray` of floats with the same length as `parses`.
     """
-    return np.array([self.score(parse) for parse in parses])
+    if sentence_metas is None:
+      sentence_metas = [None] * len(parses)
+    return np.array([self.score(parse, sentence_meta=sentence_meta)
+                     for parse, sentence_meta in zip(parses, sentence_metas)])
 
 
 class CompositeScorer(Scorer):
@@ -71,11 +76,20 @@ class CompositeScorer(Scorer):
   Scorer which composes multiple independent scorers.
   """
 
-  # TODO define
-  def __init__(self, scorers):
-    ...
+  def __init__(self, *scorers):
+    self.scorers = scorers
 
-  def forward(self, parse): ...
+  def __add__(self, scorer):
+    self.scorers.append(scorer)
+
+  def parameters(self):
+    ret = []
+    for scorer in self.scorers:
+      ret.extend(scorer.parameters())
+    return ret
+
+  def forward(self, parse, sentence_meta=None):
+    return sum(scorer(parse, sentence_meta=sentence_meta) for scorer in self.scorers)
 
 
 class LexiconScorer(Scorer):

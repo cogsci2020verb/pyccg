@@ -233,6 +233,7 @@ class WordLearner(object):
 
   def _update_with_example(self, sentence, model,
                            augment_lexicon_fn, update_fn,
+                           sentence_meta=None,
                            augment_lexicon_args=None,
                            update_args=None):
     """
@@ -243,6 +244,10 @@ class WordLearner(object):
       sentence: List of token strings
       model: `Model` instance
       answer: Desired result from `model.evaluate(lf_result(sentence))`
+      augment_lexicon_fn:
+      update_fn:
+      sentence_meta: optional dict of auxiliary sentence information made
+        available to parser and scorer
 
     Returns:
       weighted_results: List of weighted parse results for the example.
@@ -254,7 +259,7 @@ class WordLearner(object):
 
     try:
       weighted_results = update_fn(
-          self, sentence, model,
+          self, sentence, model, sentence_meta=sentence_meta,
           **update_args)
     except NoParsesSyntaxError as e:
       # No parse succeeded -- attempt lexical induction.
@@ -266,6 +271,7 @@ class WordLearner(object):
       old_params = set([id(param) for param in self.optimizer.param_groups[0]])
 
       self.lexicon = self.do_lexical_induction(sentence, model, augment_lexicon_fn,
+                                               sentence_meta=sentence_meta,
                                                **augment_lexicon_args)
 
       # Add new lexicon parameters to optimizer.
@@ -282,7 +288,7 @@ class WordLearner(object):
       # Attempt a new parameter update.
       try:
         weighted_results = update_fn(
-            self, sentence, model,
+            self, sentence, model, sentence_meta=sentence_meta,
             **update_args)
       except NoParsesError as e:
         # TODO attempt lexical induction?
@@ -330,6 +336,7 @@ class WordLearner(object):
 
     return self._update_with_example(
         sentence, model,
+        sentence_meta=sentence_meta,
         augment_lexicon_fn=augment_lexicon_nscl,
         update_fn=update_nscl,
         augment_lexicon_args=augment_lexicon_args,
@@ -349,6 +356,7 @@ class WordLearner(object):
 
     return self._update_with_example(
         sentence, model,
+        sentence_meta=sentence_meta,
         augment_lexicon_fn=augment_lexicon_nscl,
         update_fn=update_nscl_with_cached_results,
         augment_lexicon_args=augment_lexicon_args,
@@ -356,7 +364,9 @@ class WordLearner(object):
     )
 
 
-  def update_with_distant(self, sentence, model, answer, augment_lexicon_args=None, update_args=None):
+  def update_with_distant(self, sentence, model, answer,
+                          sentence_meta=None, augment_lexicon_args=None,
+                          update_args=None):
     """
     Observe a new `sentence -> answer` pair in the context of some `model` and
     update learner weights.
@@ -378,12 +388,13 @@ class WordLearner(object):
 
     return self._update_with_example(
         sentence, model,
+        sentence_meta=sentence_meta,
         augment_lexicon_fn=augment_lexicon_distant,
         update_fn=update_distant,
         augment_lexicon_args=augment_lexicon_args,
         update_args=update_args)
 
-  def update_with_cross_situational(self, sentence, model):
+  def update_with_cross_situational(self, sentence, model, sentence_meta=None):
     """
     Observe a new `sentence` in the context of a scene reference `model`.
     Assume that `sentence` is true of `model`, and use it to update learner
@@ -398,10 +409,11 @@ class WordLearner(object):
     """
     return self._update_with_example(
         sentence, model,
+        sentence_meta=sentence_meta,
         augment_lexicon_fn=augment_lexicon_cross_situational,
         update_fn=update_perceptron_cross_situational)
 
-  def update_with_2afc(self, sentence, model1, model2):
+  def update_with_2afc(self, sentence, model1, model2, sentence_meta=None):
     """
     Observe a new `sentence` in the context of two possible scene references
     `model1` and `model2`, where `sentence` is true of at least one of the
@@ -420,5 +432,6 @@ class WordLearner(object):
     """
     return self._update_with_example(
         sentence, (model1, model2),
+        sentence_meta=sentence_meta,
         augment_lexicon_fn=augment_lexicon_2afc,
         update_fn=update_perceptron_2afc)

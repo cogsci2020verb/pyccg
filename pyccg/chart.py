@@ -258,10 +258,12 @@ class WeightedCCGChartParser(nchart.CCGChartParser):
       parses.extend(chart.parses(start_cat))
     return parses
 
-  def parse(self, tokens, return_aux=False):
+  def parse(self, tokens, sentence_meta=None, return_aux=False):
     """
     Args:
       tokens: list of string tokens
+      sentence_meta: optional dict of auxiliary information about the sentence.
+        This information can be exploited by `Scorer` instances.
       return_aux: return auxiliary information (`weights`, `valid_edges`)
 
     Returns:
@@ -312,7 +314,8 @@ class WeightedCCGChartParser(nchart.CCGChartParser):
 
     results = [p for p in results if typecheck_parse(p)]
 
-    scores = [self.scorer(parse) for parse in results]
+    scores = [self.scorer(parse, sentence_meta=sentence_meta)
+              for parse in results]
     results = sorted(zip(scores, results), key=operator.itemgetter(0), reverse=True)
     if not return_aux:
       return [parse for _, parse in results]

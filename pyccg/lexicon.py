@@ -1133,7 +1133,7 @@ def filter_lexicon_entry(lexicon, entry, sentence, lf):
     raise ValueError("Sentence does not contain given entry")
 
   entry_idxs = [i for i, val in enumerate(sentence) if val == entry]
-  parse_results = chart.WeightedCCGChartParser(lexicon).parse(sentence, True)
+  parse_results = chart.WeightedCCGChartParser(lexicon).parse(sentence, return_aux=True)
 
   valid_cands = [set() for _ in entry_idxs]
   for _, _, edge_cands in parse_results:
