@@ -107,7 +107,7 @@ def _update_distant_success_fn(parse_result, model, answer):
     else:
       pred_answer = model.evaluate(root_token.semantics())
       success = pred_answer == answer
-      answer_score = np.log(float(success))
+      answer_score = float(success)
 
   except (TypeError, AttributeError) as e:
     # Type inconsistency. TODO catch this in the iter_expression

@@ -12,6 +12,8 @@ import torch as T
 from torch import nn
 from torch.nn import functional as F
 
+from pyccg import logic as l
+
 
 # TODO feature: support partial parses, so that chart parser can use a Scorer
 # to prune
@@ -132,31 +134,53 @@ class LexiconScorer(Scorer):
 
 class FrameSemanticsScorer(Scorer):
 
-  def __init__(self, lexicon, all_frames):
+  def __init__(self, lexicon, frames, root_types=(r"(S\N)", r"((S\N)/N)")):
+    """
+    Args:
+      lexicon:
+      frames: Collection of all possible frame strings
+      root_types: CCG syntactic type strings of lexical entries for which we
+        are collecting frames
+    """
     super().__init__(lexicon)
 
-    self.all_frames = all_frames
+    self.frames = frames
+    self.frame_to_idx = {frame: T.tensor(idx, requires_grad=False)
+                         for idx, frame in enumerate(self.frames)}
 
-    self.all_predicates = [] # TODO
-    self.predicate_to_idx = {pred: idx for idx, pred in enumerate(self.all_predicates)}
+    self.root_types = set(root_types)
+
+    ontology = self._lexicon.ontology
+    self.predicates = [l.Variable(val.name) for val in ontology.functions + ontology.constants]
+    self.predicate_to_idx = {pred: idx for idx, pred in enumerate(self.predicates)}
 
     # Represent unnormalized frame distributions as an embedding layer
-    self.frame_dist = nn.Embedding(len(all_predicates), len(self.all_frames))
+    self.frame_dist = nn.Embedding(len(self.predicates), len(self.frames))
     nn.init.zeros_(self.frame_dist.weight)
 
-  def forward(self, parse):
-    # TODO pass along frame somehow.
-    # TODO look up frame index.
-    ret = self.frame_dist(frame_index)
+  def parameters(self):
+    return self.frame_dist.parameters()
+
+  # TODO override clone_with_lexicon
+
+  def forward(self, parse, sentence_meta=None):
+    if sentence_meta is None or sentence_meta.get("frame_str", None) is None:
+      raise ValueError("FrameSemanticsScorer requires a sentence_meta key frame_str")
+
+    frame = sentence_meta["frame_str"]
+    try:
+      frame_idx = self.frame_to_idx[frame]
+    except KeyError:
+      raise ValueError("Unknown frame string %s" % sentence)
+
+    ret = self.frame_dist(self.frame_to_idx[frame])
     predicate_logps = F.log_softmax(ret)
 
-    # NB this is a hacky way to get the root verb -- might break.
-    root_verb = next(tok for tok in parse.pos()
-                     if str(tok.categ()) in (r"(S\N)", r"((S\N)/N)"))
+    root_verb = next(tok for _, tok in parse.pos()
+                     if str(tok.categ()) in self.root_types)
 
     score = T.zeros(())
     for predicate in root_verb.semantics().predicates():
-      predicate_idx = 0 # TODO
       score += predicate_logps[self.predicate_to_idx[predicate]]
 
     return score

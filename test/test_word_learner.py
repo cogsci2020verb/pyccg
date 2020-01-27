@@ -6,7 +6,7 @@ from pyccg import chart
 from pyccg import lexicon as lex
 from pyccg import logic as log
 from pyccg.model import Model
-from pyccg.scorers import LexiconScorer
+from pyccg.scorers import LexiconScorer, FrameSemanticsScorer
 from pyccg.word_learner import *
 
 
@@ -178,3 +178,22 @@ def test_update_distant_two_novel_words():
     entries = learner.lexicon._entries[token]
     eq_(set([(str(e.categ()), str(e.semantics())) for e in entries]),
         expected)
+
+
+def test_learner_with_frame_scorer():
+  learner = _make_mock_learner()
+
+  frames = ["A _ A", "A _ B"]
+  frame_scorer = FrameSemanticsScorer(learner.lexicon, frames, root_types=[r"(S/N)"])
+  learner.add_scorer(frame_scorer)
+
+  sentence = "goto there".split()
+  sentence_meta = {"frame_str": frames[0]}
+  answer = ("go", "there")
+  model = _make_mock_model(learner)
+
+  results = learner.update_with_distant(sentence, model, answer,
+                                        sentence_meta=sentence_meta)
+
+  ok_(frame_scorer.frame_dist.weight.min() != 0,
+      "Frame scorer weights should be updated")
