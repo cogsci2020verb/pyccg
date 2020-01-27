@@ -45,8 +45,6 @@ class WordLearner(object):
       scorer = LexiconScorer(self.lexicon)
     self.scorer = scorer
 
-    self.optimizer = optim.SGD(lexicon.parameters(), lr=learning_rate)
-
     # Learning hyperparameters
     self.learning_rate = learning_rate
     self.beta = beta
@@ -57,9 +55,20 @@ class WordLearner(object):
     self.zero_shot_limit = zero_shot_limit
     self.limit_induction = limit_induction
 
+    self.optimizer = self._make_optimizer()
+
   @property
   def ontology(self):
     return self.lexicon.ontology
+
+  def add_scorer(self, scorer):
+    self.scorer = self.scorer + scorer
+    # Restart optimizer with this scorer's parameters included
+    self.optimizer = self._make_optimizer()
+
+  def _make_optimizer(self):
+    return optim.SGD(list(self.lexicon.parameters()) + list(self.scorer.parameters()),
+                     lr=self.learning_rate)
 
   def make_parser(self, lexicon=None, ruleset=chart.DefaultRuleSet):
     """
@@ -279,8 +288,7 @@ class WordLearner(object):
       # new_params_map = {id(param): param for param in self.lexicon.parameters()}
       # new_params = set(new_params_map.keys()) - set(old_params)
       # self.optimizer.add_param_group({"params": [new_params_map[p_id] for p_id in new_params]})
-      self.optimizer = optim.SGD(self.lexicon.parameters(),
-                                 lr=self.learning_rate)
+      self.optimizer = self._make_optimizer()
 
       # TODO(Jiayuan Mao @ 04/10): suppress the printing for now.
       # self.lexicon.debug_print()

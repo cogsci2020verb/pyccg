@@ -105,6 +105,9 @@ class LexiconScorer(Scorer):
   from lexicon weights.
   """
 
+  def parameters(self):
+    return [e.weight() for e in self._lexicon.all_entries]
+
   def forward(self, parse, sentence_meta=None):
     categs, categ_priors = self._lexicon.total_category_masses()
     categ_priors = F.softmax(categ_priors)
