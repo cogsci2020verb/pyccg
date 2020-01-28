@@ -57,7 +57,7 @@ COMMENTS_RE = re.compile('''([^#]*)(?:#.*)?''')
 
 class Lexicon(ccg_lexicon.CCGLexicon):
 
-  def __init__(self, starts, primitives, families, entries, ontology=None):
+  def __init__(self, starts, primitives, families, entries, has_semantics, ontology=None):
     """
     Create a new Lexicon.
 
@@ -75,6 +75,8 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     self._primitives = primitives
     self._families = families
     self._entries = entries
+
+    self.has_semantics = has_semantics
 
     self.ontology = None
     if ontology is not None:
@@ -144,7 +146,7 @@ class Lexicon(ccg_lexicon.CCGLexicon):
           # Word definition
           # ie, which => (N\N)/(S/NP)
           entries[ident].append(Token(ident, cat, semantics, weight=weight))
-    return cls(starts, primitives, families, entries,
+    return cls(starts, primitives, families, entries, has_semantics=include_semantics,
                ontology=ontology)
 
   def get_entries(self, word):
@@ -201,6 +203,7 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     Return a clone of the current lexicon instance.
     """
     ret = deepcopy(self)
+    ret.has_semantics = retain_semantics
 
     if not retain_semantics:
       for entry_tokens in ret._entries.values():
@@ -565,7 +568,8 @@ def set_yield(category, new_yield):
     raise ValueError("unknown category type of instance %r" % category)
 
 
-def get_candidate_categories(lex, scorer, tokens, sentence, smooth=1e-3):
+def get_candidate_categories(lex, scorer, tokens, sentence,
+                             sentence_meta=None, smooth=1e-3):
   """
   Find candidate categories for the given tokens which appear in `sentence` such
   that `sentence` yields a parse.
@@ -601,7 +605,7 @@ def get_candidate_categories(lex, scorer, tokens, sentence, smooth=1e-3):
 
     # Attempt a parse.
     parser = chart.WeightedCCGChartParser(lex, scorer=new_scorer, ruleset=chart.DefaultRuleSet)
-    results = parser.parse(sentence, return_aux=True)
+    results = parser.parse(sentence, sentence_meta=sentence_meta, return_aux=True)
     if len(results) == 0:
       return FAIL
 
@@ -627,7 +631,7 @@ def get_candidate_categories(lex, scorer, tokens, sentence, smooth=1e-3):
 
 
 def attempt_candidate_parse(lexicon, tokens, candidate_categories,
-                            sentence, dummy_vars):
+                            sentence, dummy_vars, sentence_meta=None):
   """
   Attempt to parse a sentence, mapping `tokens` to new candidate
   lexical entries.
@@ -655,7 +659,7 @@ def attempt_candidate_parse(lexicon, tokens, candidate_categories,
 
   # First attempt a parse with only function application rules.
   results = chart.WeightedCCGChartParser(lexicon, ruleset=chart.ApplicationRuleSet) \
-      .parse(sentence)
+      .parse(sentence, sentence_meta=sentence_meta)
   if True:#results or not allow_composition:
     return results
 
@@ -801,7 +805,10 @@ def likelihood_2afc(tokens, categories, exprs, sentence_parse, models):
 
 
 def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
-                      model, likelihood_fns, queue_limit=5, iter_expressions_args=None):
+                      model, likelihood_fns,
+                      sentence_meta=None,
+                      queue_limit=5,
+                      iter_expressions_args=None):
   """
   Make zero-shot predictions of the posterior `p(syntax, meaning | sentence)`
   for each of `tokens`.
@@ -915,7 +922,8 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
         results = attempt_candidate_parse(lex, token_comb,
                                           syntax_comb,
                                           sentence,
-                                          dummy_vars)
+                                          dummy_vars,
+                                          sentence_meta=sentence_meta)
         category_parse_results[syntax_comb] = results
 
         # Now enumerate semantic forms.
@@ -978,7 +986,7 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
 
 def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
                     sentence, ontology, model, likelihood_fns,
-                    beta=3.0,
+                    sentence_meta=None, beta=3.0,
                     **predict_zero_shot_args):
   """
   Augment a lexicon with candidate meanings for a given word using an abstract
@@ -1018,7 +1026,9 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
 
   ranked_candidates, dummy_vars = \
       predict_zero_shot(lex, query_tokens, query_token_syntaxes, sentence,
-                        ontology, model, likelihood_fns, **predict_zero_shot_args)
+                        ontology, model, likelihood_fns,
+                        sentence_meta=sentence_meta,
+                        **predict_zero_shot_args)
 
   candidates = sorted(ranked_candidates.queue, key=lambda item: -item[0])
   new_entries = {token: Counter() for token in query_tokens}
@@ -1132,7 +1142,7 @@ def filter_lexicon_entry(lexicon, entry, sentence, lf):
     raise ValueError("Sentence does not contain given entry")
 
   entry_idxs = [i for i, val in enumerate(sentence) if val == entry]
-  parse_results = chart.WeightedCCGChartParser(lexicon).parse(sentence, True)
+  parse_results = chart.WeightedCCGChartParser(lexicon).parse(sentence, return_aux=True)
 
   valid_cands = [set() for _ in entry_idxs]
   for _, _, edge_cands in parse_results:

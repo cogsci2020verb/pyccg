@@ -58,12 +58,13 @@ def update_perceptron_batch(learner, data, learning_rate=0.1, parser=None):
 
 
 def update_reinforce(learner, sentence, model, success_fn,
-                     learning_rate=10, parser=None):
+                     sentence_meta=None, parser=None):
   if parser is None:
     parser = learner.make_parser(ruleset=chart.DefaultRuleSet)
 
   norm = 0.0
-  weighted_results = parser.parse(sentence, return_aux=True)
+  weighted_results = parser.parse(sentence, sentence_meta=sentence_meta,
+                                  return_aux=True)
   if not weighted_results:
     raise NoParsesSyntaxError("No successful parses computed.", sentence)
 
@@ -76,13 +77,14 @@ def update_reinforce(learner, sentence, model, success_fn,
 
 
 def update_reinforce_with_cached_results(learner, sentence, parses,
-                                         logps, rewards):
+                                         logps, rewards,
+                                         sentence_meta=None):
   if not parses:
     # NB(Jiayuan Mao @ 09/19): we need to check the parsing again, since the
     # missing lexicons might have been induced in an instance in the same
     # batch.
     parser = learner.make_parser(ruleset=chart.DefaultRuleSet)
-    if len(parser.parse(sentence)) == 0:
+    if len(parser.parse(sentence, sentence_meta=sentence_meta)) == 0:
       raise NoParsesSyntaxError("No successful parses computed.", "")
     else:
       return []
@@ -121,26 +123,32 @@ def _update_distant_success_fn(parse_result, model, answer):
 
 
 def update_nscl(learner, sentence, model, answer,
-                              **update_perceptron_kwargs):
+                sentence_meta=None,
+                **update_perceptron_kwargs):
 
   L.debug("Desired answer: %s", answer)
   success_fn = functools.partial(_update_distant_success_fn, answer=answer)
-  return update_reinforce(learner, sentence, model, success_fn, **update_perceptron_kwargs)
+  return update_reinforce(learner, sentence, model, success_fn,
+                          sentence_meta=sentence_meta, **update_perceptron_kwargs)
 
 
 def update_nscl_with_cached_results(learner, sentence, model, parses,
-    normalized_scores, answer_scores, **update_perceptron_kwargs):
+                                    normalized_scores, answer_scores,
+                                    sentence_meta=None, **update_perceptron_kwargs):
   # sentence and model will be ignored.
-  return update_with_cached_results(learner, sentence, parses,
-      normalized_scores, answer_scores, **update_perceptron_kwargs)
+  return update_reinforce_with_cached_results(learner, sentence, parses,
+      normalized_scores, answer_scores,
+      sentence_meta=sentence_meta, **update_perceptron_kwargs)
 
 
 def update_distant(learner, sentence, model, answer,
+                   sentence_meta=None,
                    **update_kwargs):
 
   L.debug("Desired answer: %s", answer)
   success_fn = functools.partial(_update_distant_success_fn, answer=answer)
-  return update_reinforce(learner, sentence, model, success_fn, **update_kwargs)
+  return update_reinforce(learner, sentence, model, success_fn,
+                          sentence_meta=sentence_meta, **update_kwargs)
 
 
 def update_perceptron_cross_situational(learner, sentence, model,

@@ -5,6 +5,7 @@ updating weights in virtue of success / failure of parses.
 
 from collections import Counter
 from copy import copy
+import logging
 
 from nltk.tree import Tree
 import numpy as np
@@ -12,11 +13,13 @@ import torch as T
 from torch import nn
 from torch.nn import functional as F
 
+from pyccg import logic as l
+
+L = logging.getLogger(__name__)
+
 
 # TODO feature: support partial parses, so that chart parser can use a Scorer
 # to prune
-
-# TODO feature: more explicitly handle log-probs vs scores
 
 
 class Scorer(nn.Module):
@@ -31,39 +34,55 @@ class Scorer(nn.Module):
   """
 
   def __init__(self, lexicon):
+    super().__init__()
     self._lexicon = lexicon
 
-  def __call__(self, parse):
+  def __call__(self, parse, sentence_meta=None):
     if isinstance(parse, Tree):
-      return self.score(parse)
+      return self.score(parse, sentence_meta=sentence_meta)
     elif isinstance(parse, list):
-      return self.score_batch(parse)
+      return self.score_batch(parse, sentence_meta=sentence_meta)
     else:
       raise ValueError("Don't know how to score parse of type %s: %s" % (type(parse), parse))
 
   def __add__(self, scorer):
-    if isinstance(self, CompositeScorer):
-      pass
-    ...
+    if isinstance(scorer, CompositeScorer):
+      # We're not a CompositeScorer. Let this scorer absorb us.
+      return scorer + self
+    return CompositeScorer(scorer, self)
 
   def clone_with_lexicon(self, lexicon):
+    if self.requires_semantics and not lexicon.has_semantics:
+      # Check that the lexicon assigns semantic representations
+      L.warn("Semantics-sensitive scorer is being cloned with a semantics-free lexicon. "
+             "Going to return an empty scorer.")
+      return EmptyScorer(lexicon)
+
     clone = copy(self)
     clone.lexicon = lexicon
     return clone
 
-  def forward(self, parse):
+  def forward(self, parse, sentence_meta=None):
     raise NotImplementedError()
 
-  def score(self, parse):
-    return self.forward(parse)
+  def score(self, parse, sentence_meta=None):
+    return self.forward(parse, sentence_meta=sentence_meta)
 
-  def score_batch(self, parses):
+  def score_batch(self, parses, sentence_metas=None):
     """
     Score a batch of predicted parses.
 
     Returns `numpy.ndarray` of floats with the same length as `parses`.
     """
-    return np.array([self.score(parse) for parse in parses])
+    if sentence_metas is None:
+      sentence_metas = [None] * len(parses)
+    return np.array([self.score(parse, sentence_meta=sentence_meta)
+                     for parse, sentence_meta in zip(parses, sentence_metas)])
+
+
+class EmptyScorer(Scorer):
+  def forward(self, parse):
+    return T.zeros(())
 
 
 class CompositeScorer(Scorer):
@@ -71,11 +90,28 @@ class CompositeScorer(Scorer):
   Scorer which composes multiple independent scorers.
   """
 
-  # TODO define
-  def __init__(self, scorers):
-    ...
+  def __init__(self, *scorers):
+    self.scorers = scorers
 
-  def forward(self, parse): ...
+  def __add__(self, scorer):
+    self.scorers.append(scorer)
+
+  def clone_with_lexicon(self, lexicon):
+    scorers = [scorer.clone_with_lexicon(lexicon) for scorer in self.scorers]
+    scorers = [scorer for scorer in scorers if not isinstance(scorer, EmptyScorer)]
+
+    if len(scorers) == 0:
+      return EmptyScorer(lexicon)
+    return CompositeScorer(*scorers)
+
+  def parameters(self):
+    ret = []
+    for scorer in self.scorers:
+      ret.extend(scorer.parameters())
+    return ret
+
+  def forward(self, parse, sentence_meta=None):
+    return T.zeros(()) + sum(scorer(parse, sentence_meta=sentence_meta) for scorer in self.scorers)
 
 
 class LexiconScorer(Scorer):
@@ -91,13 +127,10 @@ class LexiconScorer(Scorer):
   from lexicon weights.
   """
 
-  def __init__(self, lexicon, update_method="perceptron"):
-    # TODO ensure that lexicon weights are tensors
+  def parameters(self):
+    return [e.weight() for e in self._lexicon.all_entries]
 
-    super().__init__(lexicon)
-    self.update_method = update_method
-
-  def forward(self, parse):
+  def forward(self, parse, sentence_meta=None):
     categs, categ_priors = self._lexicon.total_category_masses()
     categ_priors = F.softmax(categ_priors)
     categ_to_idx = dict(zip(categs, range(len(categs))))
@@ -121,31 +154,55 @@ class LexiconScorer(Scorer):
 
 class FrameSemanticsScorer(Scorer):
 
-  def __init__(self, lexicon, all_frames):
+  requires_semantics = True
+
+  def __init__(self, lexicon, frames, root_types=(r"(S\N)", r"((S\N)/N)")):
+    """
+    Args:
+      lexicon:
+      frames: Collection of all possible frame strings
+      root_types: CCG syntactic type strings of lexical entries for which we
+        are collecting frames
+    """
     super().__init__(lexicon)
 
-    self.all_frames = all_frames
+    self.frames = frames
+    self.frame_to_idx = {frame: T.tensor(idx, requires_grad=False)
+                         for idx, frame in enumerate(self.frames)}
 
-    self.all_predicates = [] # TODO
-    self.predicate_to_idx = {pred: idx for idx, pred in enumerate(self.all_predicates)}
+    self.root_types = set(root_types)
+
+    ontology = self._lexicon.ontology
+    self.predicates = [l.Variable(val.name) for val in ontology.functions + ontology.constants]
+    self.predicate_to_idx = {pred: idx for idx, pred in enumerate(self.predicates)}
 
     # Represent unnormalized frame distributions as an embedding layer
-    self.frame_dist = nn.Embedding(len(all_predicates), len(self.all_frames))
+    self.frame_dist = nn.Embedding(len(self.frames), len(self.predicates))
     nn.init.zeros_(self.frame_dist.weight)
 
-  def forward(self, parse):
-    # TODO pass along frame somehow.
-    # TODO look up frame index.
-    ret = self.frame_dist(frame_index)
+  def parameters(self):
+    return self.frame_dist.parameters()
+
+  # TODO override clone_with_lexicon
+
+  def forward(self, parse, sentence_meta=None):
+    if sentence_meta is None or sentence_meta.get("frame_str", None) is None:
+      raise ValueError("FrameSemanticsScorer requires a sentence_meta key frame_str")
+
+    frame = sentence_meta["frame_str"]
+    try:
+      frame_idx = self.frame_to_idx[frame]
+    except KeyError:
+      raise ValueError("Unknown frame string %s" % sentence)
+
+    ret = self.frame_dist(self.frame_to_idx[frame])
     predicate_logps = F.log_softmax(ret)
 
-    # NB this is a hacky way to get the root verb -- might break.
-    root_verb = next(tok for tok in parse.pos()
-                     if str(tok.categ()) in (r"(S\N)", r"((S\N)/N)"))
+    root_verb = next(tok for _, tok in parse.pos()
+                     if str(tok.categ()) in self.root_types)
 
     score = T.zeros(())
     for predicate in root_verb.semantics().predicates():
-      predicate_idx = 0 # TODO
       score += predicate_logps[self.predicate_to_idx[predicate]]
 
     return score
