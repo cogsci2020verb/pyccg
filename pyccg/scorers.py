@@ -197,11 +197,15 @@ class FrameSemanticsScorer(Scorer):
 
     ret = self.frame_dist(self.frame_to_idx[frame])
     predicate_logps = F.log_softmax(ret)
-
-    root_verb = next(tok for _, tok in parse.pos()
-                     if str(tok.categ()) in self.root_types)
-
+    
     score = T.zeros(())
+    try:
+        root_verb = next(tok for _, tok in parse.pos()
+                         if str(tok.categ()) in self.root_types)
+    except:
+        root_verb = None
+        return score
+
     for predicate in root_verb.semantics().predicates():
       score += predicate_logps[self.predicate_to_idx[predicate]]
 
