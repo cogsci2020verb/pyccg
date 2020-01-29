@@ -224,8 +224,7 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     """
     prune_count = 0
     for token in self._entries:
-      entries_t = [token for token in self._entries[token] if token.weight() > 0]
-      entries_t = sorted(entries_t, key=lambda t: t.weight(), reverse=True)[:max_entries]
+      entries_t = sorted(self._entries[token], key=lambda t: t.weight(), reverse=True)[:max_entries]
       prune_count += len(self._entries[token]) - len(entries_t)
       self._entries[token] = entries_t
     self.refresh_ontology_registration()
