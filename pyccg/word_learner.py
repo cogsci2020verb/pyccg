@@ -287,6 +287,9 @@ class WordLearner(object):
                                                sentence_meta=sentence_meta,
                                                **augment_lexicon_args)
 
+      # Reconstruct scorer to use this lexicon.
+      self.scorer = self.scorer.clone_with_lexicon(self.lexicon)
+
       # Add new lexicon parameters to optimizer.
       # TODO can't get this to work -- for now we just reinitialize. Fine for stateless SGD.
       # new_params_map = {id(param): param for param in self.lexicon.parameters()}
