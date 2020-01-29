@@ -162,9 +162,6 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     """
     self._entries[word] = []
     for category, semantics, weight in entries:
-      if isinstance(weight, (float, int)):
-        weight = T.tensor(weight, requires_grad=True)
-
       self.add_entry(word, category, semantics=semantics, weight=weight)
 
   def add_entry(self, word, category, semantics=None, weight=None):
@@ -180,6 +177,8 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     # Typecheck and assign types in semantic representation.
     if semantics is not None and self.ontology is not None:
       self.ontology.typecheck(semantics)
+    if isinstance(weight, (float, int)):
+      weight = T.tensor(weight, requires_grad=True)
 
     token = Token(word, category, semantics=semantics, weight=weight)
     self._entries[word].append(token)

@@ -35,7 +35,7 @@ def _make_mock_learner(**kwargs):
 
   scorer = LexiconScorer(lexicon)
 
-  return WordLearner(lexicon, scorer=scorer, **kwargs)
+  return WordLearner(lexicon, learning_rate=0.1, scorer=scorer, **kwargs)
 
 
 def _make_mock_model(learner):
@@ -79,6 +79,12 @@ def test_update_distant_existing_words_reinforce():
 
   model = _make_mock_model(learner)
   print(learner.lexicon.parameters())
+
+  # Precondition for below tests to make sense: weights should start the same.
+  # (If not, just change this)
+  eq_(learner.lexicon._entries["goto"][0].weight(),
+      learner.lexicon._entries["go"][0].weight())
+
   results = learner.update_with_distant(sentence, model, answer)
   print(learner.lexicon.parameters())
   ok_(len(results) > 0, "Parser has >0 parses for valid sentence")
@@ -89,6 +95,9 @@ def test_update_distant_existing_words_reinforce():
 
   eq_(set([(e.categ(), e.semantics()) for e in old_lex.all_entries]),
       set([(e.categ(), e.semantics()) for e in learner.lexicon.all_entries]))
+
+  # Weight update should support the used tokens
+  ok_(learner.lexicon._entries["goto"][0].weight() > learner.lexicon._entries["go"][0].weight())
 
 
 def test_update_distant_one_novel_word():

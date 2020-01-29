@@ -62,7 +62,6 @@ def update_reinforce(learner, sentence, model, success_fn,
   if parser is None:
     parser = learner.make_parser(ruleset=chart.DefaultRuleSet)
 
-  norm = 0.0
   weighted_results = parser.parse(sentence, sentence_meta=sentence_meta,
                                   return_aux=True)
   if not weighted_results:
@@ -89,8 +88,12 @@ def update_reinforce_with_cached_results(learner, sentence, parses,
     else:
       return []
 
+  if isinstance(logps, list):
+    logps = T.stack(logps)
+  if isinstance(rewards, list):
+    rewards = T.stack([T.tensor(reward) for reward in rewards])
+
   # Set up REINFORCE loss.
-  rewards = T.stack([T.tensor(reward) for reward in rewards])
   loss = -logps * rewards
   loss = loss.sum()
   loss.backward()
