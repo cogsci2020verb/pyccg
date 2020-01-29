@@ -177,22 +177,25 @@ class WordLearner(object):
 
     return ret
  
-  def predict_zero_shot_nscl(self, sentence, model, sentence_meta=None, **kwargs):
+  def predict_zero_shot_nscl(self, sentence, model, sentence_meta, answer, augment_lexicon_args):
     """Yield expected zero_shot accuracy on a novel sentence, marginalizing over 
     possible novel lexical entries required to parse the sentence.
     """
+    kwargs = {"answer": answer}
+    augment_lexicon_args.update(kwargs)
+    
     parser = self.make_parser()
     weighted_results = parser.parse(sentence, sentence_meta=sentence_meta, return_aux=True)
     if len(weighted_results) == 0:
       L.warning("Parse failed for sentence '%s'", " ".join(sentence))
       aug_lexicon = self.do_lexical_induction(sentence, model=model,
                                               augment_lexicon_fn=augment_lexicon_nscl,
-                                              queue_limit=50
                                               **kwargs)
       parser = self.make_parser(lexicon=aug_lexicon)
       weighted_results = parser.parse(sentence, sentence_meta=sentence_meta, return_aux=True)
      
-    # Normalize distribution. over parse
+    # Normalize scores
+    
     
     print(weighted_results)
     assert False
@@ -311,16 +314,12 @@ class WordLearner(object):
 
       # Track optimizer parameter set before lexical induction.
       old_params = set([id(param) for param in self.optimizer.param_groups[0]])
-      
-      
-      if 'evaluate' in augment_lexicon_args:
-          evaluate = True
-          del augment_lexicon_args['evaluate']
           
       self.lexicon = self.do_lexical_induction(sentence, model, augment_lexicon_fn,
                                                sentence_meta=sentence_meta,
                                                **augment_lexicon_args)
                                                
+      
       # Add new lexicon parameters to optimizer.
       # TODO can't get this to work -- for now we just reinitialize. Fine for stateless SGD.
       # new_params_map = {id(param): param for param in self.lexicon.parameters()}
@@ -339,16 +338,12 @@ class WordLearner(object):
       except NoParsesError as e:
         # TODO attempt lexical induction?
         return []
-
+    
     self.optimizer.step()
 
     if self.prune_entries is not None:
       prune_count = self.lexicon.prune(max_entries=self.prune_entries)
       L.info("Pruned %i entries from lexicon.", prune_count)
-     
-    if evaluate:
-        print(self.lexicon)
-        assert False
         
     return weighted_results
 
