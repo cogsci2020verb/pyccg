@@ -3,7 +3,7 @@ Tools for updating and expanding lexicons, dealing with logical forms, etc.
 """
 
 from collections import defaultdict, Counter
-from copy import deepcopy
+from copy import copy, deepcopy
 from functools import reduce
 import itertools
 import logging
@@ -1030,6 +1030,7 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
                         **predict_zero_shot_args)
 
   candidates = sorted(ranked_candidates.queue, key=lambda item: -item[0])
+  old_entries = {token: copy(lex._entries[token]) for token in query_tokens}
   new_entries = {token: Counter() for token in query_tokens}
 
   # Calculate marginal p(syntax, meaning | sentence) for each token.
@@ -1045,9 +1046,9 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
   for token, candidates in new_entries.items():
     total_mass = sum(candidates.values())
     if len(candidates) > 0:
-      lex.set_entries(token,
-                      [(syntax, meaning, T.detach(weight / total_mass * beta))
-                       for (syntax, meaning), weight in candidates.items()])
+      tok_new_entries = [(syntax, meaning, T.detach(weight / total_mass * beta))
+                         for (syntax, meaning), weight in candidates.items()]
+      lex.set_entries(token, old_entries[token] + tok_new_entries)
 
       L.info("Inferred %i novel entries for token %s:", len(candidates), token)
       for entry, weight in sorted(candidates.items(), key=lambda x: x[1], reverse=True):
