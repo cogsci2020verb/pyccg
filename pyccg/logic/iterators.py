@@ -33,6 +33,9 @@ class IterationContext(object):
     self.semantic_type = semantic_type
     self.syntactic_type = syntactic_type
 
+  def __hash__(self):
+    return hash((self.bound_vars, self.semantic_type, self.syntactic_type))
+
   def clone(self):
     return copy(self)
 
