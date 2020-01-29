@@ -90,8 +90,9 @@ def update_reinforce_with_cached_results(learner, sentence, parses,
       return []
 
   # Set up REINFORCE loss.
-  loss = [reward * -logp for reward, logp in zip(rewards, logps)]
-  loss = T.stack(loss).sum()
+  rewards = T.stack([T.tensor(reward) for reward in rewards])
+  loss = -logps * rewards
+  loss = loss.sum()
   loss.backward()
 
   return parses
