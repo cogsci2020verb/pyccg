@@ -176,6 +176,34 @@ class WordLearner(object):
         meaning_prior_smooth=self.meaning_prior_smooth))
 
     return ret
+ 
+  def predict_zero_shot_nscl(self, sentence, model, sentence_meta=None, **kwargs):
+    """Yield expected zero_shot accuracy on a novel sentence, marginalizing over 
+    possible novel lexical entries required to parse the sentence.
+    """
+    parser = self.make_parser()
+    weighted_results = parser.parse(sentence, sentence_meta=sentence_meta, return_aux=True)
+    if len(weighted_results) == 0:
+      L.warning("Parse failed for sentence '%s'", " ".join(sentence))
+      aug_lexicon = self.do_lexical_induction(sentence, model=model,
+                                              augment_lexicon_fn=augment_lexicon_nscl,
+                                              queue_limit=50
+                                              **kwargs)
+      parser = self.make_parser(lexicon=aug_lexicon)
+      weighted_results = parser.parse(sentence, sentence_meta=sentence_meta, return_aux=True)
+     
+    # Normalize distribution. over parse
+    
+    print(weighted_results)
+    assert False
+    # Marginalize over expected weighted results.
+    expected_accuracy = 0.0
+    for result, score, _ in weighted_results:
+      semantics = result.label()[0].semantics()
+      if (model.evaluate(semantics) == True):
+          expected_accuracy += np.exp(score)
+          
+    
 
   def predict_zero_shot_tokens(self, sentence, model):
     """
@@ -197,7 +225,7 @@ class WordLearner(object):
         self.lexicon, query_tokens, query_token_syntaxes, sentence,
         self.ontology, model, self._build_likelihood_fns(sentence, model))
     return query_token_syntaxes, candidates
-
+    
   def predict_zero_shot_2afc(self, sentence, model1, model2):
     """
     Yield zero-shot predictions on a 2AFC sentence, marginalizing over possible
@@ -243,6 +271,7 @@ class WordLearner(object):
           dist[model2] += np.exp(score)
 
     return dist.ensure_support((model1, model2)).normalize()
+      
 
   def _update_with_example(self, sentence, model,
                            augment_lexicon_fn, update_fn,
@@ -269,7 +298,7 @@ class WordLearner(object):
     augment_lexicon_args = augment_lexicon_args or {}
 
     self.optimizer.zero_grad()
-
+    evaluate = False
     try:
       weighted_results = update_fn(
           self, sentence, model, sentence_meta=sentence_meta,
@@ -282,11 +311,16 @@ class WordLearner(object):
 
       # Track optimizer parameter set before lexical induction.
       old_params = set([id(param) for param in self.optimizer.param_groups[0]])
-
+      
+      
+      if 'evaluate' in augment_lexicon_args:
+          evaluate = True
+          del augment_lexicon_args['evaluate']
+          
       self.lexicon = self.do_lexical_induction(sentence, model, augment_lexicon_fn,
                                                sentence_meta=sentence_meta,
                                                **augment_lexicon_args)
-
+                                               
       # Add new lexicon parameters to optimizer.
       # TODO can't get this to work -- for now we just reinitialize. Fine for stateless SGD.
       # new_params_map = {id(param): param for param in self.lexicon.parameters()}
@@ -311,7 +345,11 @@ class WordLearner(object):
     if self.prune_entries is not None:
       prune_count = self.lexicon.prune(max_entries=self.prune_entries)
       L.info("Pruned %i entries from lexicon.", prune_count)
-
+     
+    if evaluate:
+        print(self.lexicon)
+        assert False
+        
     return weighted_results
 
   def update_with_nscl(self, sentence, model, answer,
