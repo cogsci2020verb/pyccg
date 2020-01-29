@@ -168,13 +168,13 @@ class FrameSemanticsScorer(Scorer):
 
     self.frames = frames
     self.frame_to_idx = {frame: T.tensor(idx, requires_grad=False)
-                         for idx, frame in enumerate(self.frames)}
+                         for idx, frame in enumerate(sorted(self.frames))}
 
     self.root_types = set(root_types)
 
     ontology = self._lexicon.ontology
     self.predicates = [l.Variable(val.name) for val in ontology.functions + ontology.constants]
-    self.predicate_to_idx = {pred: idx for idx, pred in enumerate(self.predicates)}
+    self.predicate_to_idx = {pred: idx for idx, pred in enumerate(sorted(self.predicates))}
 
     # Represent unnormalized frame distributions as an embedding layer
     self.frame_dist = nn.Embedding(len(self.frames), len(self.predicates))
@@ -197,7 +197,7 @@ class FrameSemanticsScorer(Scorer):
 
     ret = self.frame_dist(self.frame_to_idx[frame])
     predicate_logps = F.log_softmax(ret)
-    
+
     score = T.zeros(())
     try:
         root_verb = next(tok for _, tok in parse.pos()
