@@ -283,8 +283,7 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     for entry in self.all_entries:
       if entry._token in exclude_tokens:
         continue
-      if entry.weight() > 0.0:
-        ret[categ_to_idx[entry.categ()]] += preprocess(entry.weight())
+      ret[categ_to_idx[entry.categ()]] += preprocess(entry.weight())
 
     return categs, ret
 
