@@ -222,14 +222,18 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     Returns:
       prune_count: Number of lexical entries which were pruned.
     """
-    prune_count = 0
+    total_prune_count = 0
     for token in self._entries:
       entries_t = sorted(self._entries[token], key=lambda t: t.weight(), reverse=True)[:max_entries]
-      prune_count += len(self._entries[token]) - len(entries_t)
+      prune_count = len(self._entries[token]) - len(entries_t)
+      if prune_count > 0:
+        L.info("PRUNED %i entries for %s", prune_count, token)
+      total_prune_count += prune_count
+
       self._entries[token] = entries_t
     self.refresh_ontology_registration()
 
-    return prune_count
+    return total_prune_count
 
   def debug_print(self, stream=sys.stdout):
     for token, entries in self._entries.items():
