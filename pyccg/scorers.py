@@ -91,10 +91,11 @@ class CompositeScorer(Scorer):
   """
 
   def __init__(self, *scorers):
-    self.scorers = scorers
+    self.scorers = list(scorers)
 
   def __add__(self, scorer):
     self.scorers.append(scorer)
+    return self
 
   def clone_with_lexicon(self, lexicon):
     scorers = [scorer.clone_with_lexicon(lexicon) for scorer in self.scorers]
