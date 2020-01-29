@@ -107,7 +107,7 @@ class WordLearner(object):
       return query_tokens, query_token_syntaxes
 
     L.info("No novel words; searching for new entries for known wordforms.")
-    # Lexical entries are present for all words, but parse still failed.
+
     # That means we are missing entries for one or more wordforms.
     # For now: blindly try updating each word's entries.
     #
@@ -274,7 +274,7 @@ class WordLearner(object):
       weighted_results = update_fn(
           self, sentence, model, sentence_meta=sentence_meta,
           **update_args)
-    except NoParsesSyntaxError as e:
+    except NoParsesError as e:
       # No parse succeeded -- attempt lexical induction.
       # TODO(Jiayuan Mao @ 04/10): suppress the warnings for now.
       L.warning("Parse failed for sentence '%s'", " ".join(sentence))
@@ -305,16 +305,6 @@ class WordLearner(object):
       except NoParsesError as e:
         # TODO attempt lexical induction?
         return []
-    except NoParsesError as e:
-      # TODO(hans): should attempt lexical induction here rather than quitting.
-      # the above handler only catches syntax failures, where we have no valid
-      # syntactic entry for words in the sentence
-      L.warning("Syntactic parse worked, but semantic parse failed for sentence '%s'",
-                " ".join(sentence))
-
-      # TODO(Jiayuan Mao @ 04/10): add handler for NoParsesError, meaning that there is no parses being able to
-      # answer the question correctly.
-      return []
 
     self.optimizer.step()
 
