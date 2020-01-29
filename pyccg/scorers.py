@@ -187,14 +187,13 @@ class RootSemanticLengthScorer(Scorer):
 
   def forward(self, parse, sentence_meta=None):
     score = T.zeros(())
-    print("hello")
     try:
       root_verb = next(tok for _, tok in parse.pos()
                        if str(tok.categ()) in self.root_types)
     except:
       return score
 
-    n_predicates = len(root_verb.semantics().predicates())
+    n_predicates = len(root_verb.semantics().predicates_list())
     if n_predicates < len(self.length_weights):
       return self.length_weights[n_predicates]
 

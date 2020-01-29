@@ -1113,6 +1113,13 @@ class Expression(SubstituteBindingsI):
         return self.visit(lambda e: e.predicates(),
                           lambda parts: functools.reduce(operator.or_, parts, set()))
 
+    def predicates_list(self):
+        """
+        Return a list of predicates
+        """
+        return self.visit(lambda e: e.predicates_list(),
+                          lambda parts: functools.reduce(operator.concat, parts, []))
+
     def simplify(self):
         """
         :return: beta-converted version of this expression
@@ -1236,6 +1243,13 @@ class ApplicationExpression(Expression):
         else:
             function_preds = self.function.predicates()
         return function_preds | self.argument.predicates()
+
+    def predicates_list(self):
+        if isinstance(self.function, ConstantExpression):
+            function_preds = [self.function.variable]
+        else:
+            function_preds = self.function.predicates_list()
+        return function_preds + self.argument.predicates_list()
 
     def visit(self, function, combinator):
         """:see: Expression.visit()"""
@@ -1367,6 +1381,9 @@ class AbstractVariableExpression(Expression):
     def predicates(self):
         """:see: Expression.predicates()"""
         return set()
+
+    def predicates_list(self):
+        return []
 
     def bound(self):
         return []
