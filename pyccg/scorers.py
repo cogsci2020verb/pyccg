@@ -152,6 +152,56 @@ class LexiconScorer(Scorer):
     return logp
 
 
+class RootSemanticLengthScorer(Scorer):
+  """
+  Exponentially penalizes (or rewards) parses based on the length of the
+  semantic form of their root verb.
+  """
+
+  requires_semantics = True
+
+  def __init__(self, lexicon, parameter=0.9, max_length=20, inverse=False,
+               root_types=(r"(S\N)", r"((S\N)/N)")):
+    """
+    Args:
+      lexicon:
+      max_length: Maximum expected length of a semantic expression. Only
+        required if `inverse` is `True`, in order to yield a proper probability
+        distribution.
+    """
+    super().__init__(lexicon)
+
+    if inverse:
+      length_weights = [np.power(parameter, max_length - length)
+                        for length in range(max_length)]
+    else:
+      length_weights = [np.power(parameter, length) for length in range(max_length)]
+    length_weights = np.array(length_weights)
+    length_weights /= length_weights.sum()
+
+    self.length_weights = T.tensor(np.log(length_weights))
+
+    self.root_types = root_types
+
+  def parameters(self): return []
+
+  def forward(self, parse, sentence_meta=None):
+    score = T.zeros(())
+    print("hello")
+    try:
+      root_verb = next(tok for _, tok in parse.pos()
+                       if str(tok.categ()) in self.root_types)
+    except:
+      return score
+
+    n_predicates = len(root_verb.semantics().predicates())
+    if n_predicates < len(self.length_weights):
+      return self.length_weights[n_predicates]
+
+    # TODO this is probably bad default behavior :)
+    return T.tensor(-np.inf)
+
+
 class FrameSemanticsScorer(Scorer):
 
   requires_semantics = True
