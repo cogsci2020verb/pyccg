@@ -243,7 +243,7 @@ class FrameSemanticsScorer(Scorer):
     try:
       frame_idx = self.frame_to_idx[frame]
     except KeyError:
-      raise ValueError("Unknown frame string %s" % sentence)
+      raise ValueError("Unknown frame string %s" % frame)
 
     ret = self.frame_dist(self.frame_to_idx[frame])
     predicate_logps = F.log_softmax(ret)
