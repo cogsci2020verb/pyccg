@@ -1050,9 +1050,11 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
   for token, candidates in new_entries.items():
     total_mass = sum(candidates.values())
     if len(candidates) > 0:
+      tok_old_entries = [(tok.categ(), tok.semantics(), tok.weight())
+                         for tok in old_entries[token]]
       tok_new_entries = [(syntax, meaning, T.detach(weight / total_mass * beta))
                          for (syntax, meaning), weight in candidates.items()]
-      lex.set_entries(token, old_entries[token] + tok_new_entries)
+      lex.set_entries(token, tok_old_entries + tok_new_entries)
 
       L.info("Inferred %i novel entries for token %s:", len(candidates), token)
       for entry, weight in sorted(candidates.items(), key=lambda x: x[1], reverse=True):
