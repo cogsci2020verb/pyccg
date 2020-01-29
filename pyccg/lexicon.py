@@ -141,7 +141,7 @@ class Lexicon(ccg_lexicon.CCGLexicon):
                 ontology.typecheck(semantics)
 
           weight = float(weight[1:-1]) if weight is not None else default_weight
-          weight = Parameter(T.tensor(weight), requires_grad=True)
+          weight = Parameter(T.tensor(weight, requires_grad=True))
 
           # Word definition
           # ie, which => (N\N)/(S/NP)
@@ -178,7 +178,7 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     if semantics is not None and self.ontology is not None:
       self.ontology.typecheck(semantics)
     if isinstance(weight, (float, int)):
-      weight = T.tensor(weight, requires_grad=True)
+      weight = Parameter(T.tensor(weight, requires_grad=True))
 
     token = Token(word, category, semantics=semantics, weight=weight)
     self._entries[word].append(token)
@@ -1047,11 +1047,11 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
 
   # Construct a new lexicon.
   for token, candidates in new_entries.items():
-    total_mass = sum(candidates.values())
+    total_mass = sum(candidates.values()).item()
     if len(candidates) > 0:
       tok_old_entries = [(tok.categ(), tok.semantics(), tok.weight())
                          for tok in old_entries[token]]
-      tok_new_entries = [(syntax, meaning, T.detach(weight / total_mass * beta))
+      tok_new_entries = [(syntax, meaning, weight.item() / total_mass * beta)
                          for (syntax, meaning), weight in candidates.items()]
       lex.set_entries(token, tok_old_entries + tok_new_entries)
 
