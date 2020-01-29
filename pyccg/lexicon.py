@@ -163,7 +163,7 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     self._entries[word] = []
     for category, semantics, weight in entries:
       if isinstance(weight, (float, int)):
-        weight = T.tensor(weight, requires_grad=False)
+        weight = T.tensor(weight, requires_grad=True)
 
       self.add_entry(word, category, semantics=semantics, weight=weight)
 
