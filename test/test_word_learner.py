@@ -5,8 +5,8 @@ from nose.tools import *
 from pyccg import chart
 from pyccg import lexicon as lex
 from pyccg import logic as log
+from pyccg import scorers
 from pyccg.model import Model
-from pyccg.scorers import LexiconScorer, FrameSemanticsScorer
 from pyccg.word_learner import *
 
 
@@ -127,6 +127,44 @@ def test_update_distant_one_novel_word():
   entry = learner.lexicon._entries["here"][0]
   eq_(str(entry.categ()), "N")
   eq_(str(entry.semantics()), "here")
+
+
+def test_update_distant_one_novel_word_multiple_scorers():
+  """
+  update_distant with one novel word and multiple scorers. Make sure the
+  parameters have gradients after update
+  """
+  sentence = "goto here".split()
+  answer = ("go", "here")
+  learner = _make_mock_learner()
+
+  # Add some custom scorers to the learner
+  root_types = [r"(S/N)"]
+  frames = ["nsubj _"]
+  learner.scorer += scorers.RootSemanticLengthScorer(learner.lexicon, root_types=root_types)
+  learner.scorer += scorers.FrameSemanticsScorer(learner.lexicon, frames=frames, root_types=root_types)
+
+  model = _make_mock_model(learner)
+  sentence_meta = {"frame_str": "nsubj _"}
+  results = learner.update_with_distant(sentence, model, answer, sentence_meta=sentence_meta)
+  ok_(len(results) > 0, "Parser has >0 parses for valid sentence")
+
+  learner.lexicon.debug_print()
+
+  for _ in range(2):
+    print("=====")
+    old_weights = {(tok._token, tok.categ(), tok.semantics()): tok.weight().item()
+                   for tok in learner.lexicon.all_entries}
+
+    learner.update_with_distant(sentence, model, answer, sentence_meta=sentence_meta)
+    learner.lexicon.debug_print()
+
+    new_weights = {(tok._token, tok.categ(), tok.semantics()): tok.weight().item()
+                   for tok in learner.lexicon.all_entries}
+
+    eq_(set(new_weights.keys()), set(old_weights.keys()))
+    ok_(not any(new_weights[k] == old_weights[k] for k in new_weights),
+        "All weights should have updated")
 
 
 def test_update_distant_one_novel_sense():
