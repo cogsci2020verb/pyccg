@@ -1050,7 +1050,7 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
 
   # Construct a new lexicon.
   for token, candidates in new_entries.items():
-    total_mass = sum(candidates.values()).item()
+    total_mass = sum(candidates.values(), T.zeros(())).item()
     if len(candidates) > 0:
       tok_old_entries = [(tok.categ(), tok.semantics(), tok.weight())
                          for tok in old_entries[token]]
