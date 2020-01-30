@@ -59,7 +59,7 @@ class Scorer(nn.Module):
       return EmptyScorer(lexicon)
 
     clone = copy(self)
-    clone.lexicon = lexicon
+    clone._lexicon = lexicon
     return clone
 
   def forward(self, parse, sentence_meta=None):
