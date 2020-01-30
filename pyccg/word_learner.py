@@ -157,6 +157,7 @@ class WordLearner(object):
       lex = augment_lexicon_fn(self.lexicon, query_tokens, query_token_syntaxes,
                               sentence, self.ontology, model,
                               self._build_likelihood_fns(sentence, model),
+                              self.scorer,
                               sentence_meta=sentence_meta,
                               beta=self.beta,
                               **augment_lexicon_args)

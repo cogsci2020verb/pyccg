@@ -632,7 +632,7 @@ def get_candidate_categories(lex, scorer, tokens, sentence,
 
 
 def attempt_candidate_parse(lexicon, tokens, candidate_categories,
-                            sentence, dummy_vars, sentence_meta=None):
+                            sentence, scorer, dummy_vars, sentence_meta=None):
   """
   Attempt to parse a sentence, mapping `tokens` to new candidate
   lexical entries.
@@ -656,11 +656,14 @@ def attempt_candidate_parse(lexicon, tokens, candidate_categories,
   for token, syntax in zip(tokens, candidate_categories):
     lexicon.set_entries(token, [(syntax, sub_exprs[token], 1.0)])
 
+  # Reconstruct scorer with this modified lexicon.
+  scorer = scorer.clone_with_lexicon(lexicon)
+
   parse_results = []
 
   # First attempt a parse with only function application rules.
-  results = chart.WeightedCCGChartParser(lexicon, ruleset=chart.ApplicationRuleSet) \
-      .parse(sentence, sentence_meta=sentence_meta)
+  parser = chart.WeightedCCGChartParser(lexicon, scorer=scorer, ruleset=chart.ApplicationRuleSet)
+  results = parser.parse(sentence, sentence_meta=sentence_meta)
   if True:#results or not allow_composition:
     return results
 
@@ -806,7 +809,7 @@ def likelihood_2afc(tokens, categories, exprs, sentence_parse, models):
 
 
 def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
-                      model, likelihood_fns,
+                      model, likelihood_fns, scorer,
                       sentence_meta=None,
                       queue_limit=5,
                       iter_expressions_args=None):
@@ -923,6 +926,7 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
         results = attempt_candidate_parse(lex, token_comb,
                                           syntax_comb,
                                           sentence,
+                                          scorer,
                                           dummy_vars,
                                           sentence_meta=sentence_meta)
         category_parse_results[syntax_comb] = results
@@ -986,7 +990,7 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
 
 
 def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
-                    sentence, ontology, model, likelihood_fns,
+                    sentence, ontology, model, likelihood_fns, scorer,
                     sentence_meta=None, beta=3.0,
                     **predict_zero_shot_args):
   """
@@ -1027,7 +1031,7 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
 
   ranked_candidates, dummy_vars = \
       predict_zero_shot(lex, query_tokens, query_token_syntaxes, sentence,
-                        ontology, model, likelihood_fns,
+                        ontology, model, likelihood_fns, scorer,
                         sentence_meta=sentence_meta,
                         **predict_zero_shot_args)
 
@@ -1067,7 +1071,7 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
 
 def augment_lexicon_nscl(
     old_lex, query_tokens, query_token_syntaxes,
-    sentence, ontology, model, likelihood_fns, answer,
+    sentence, ontology, model, likelihood_fns, scorer, answer,
     **augment_kwargs):
 
   # TODO(Jiayuan Mao @ 01/28): add the distant function....
@@ -1078,13 +1082,14 @@ def augment_lexicon_nscl(
 
   return augment_lexicon(
         old_lex, query_tokens, query_token_syntaxes,
-        sentence, ontology, model, likelihood_fns,
+        sentence, ontology, model, likelihood_fns, scorer,
         **augment_kwargs
   )
 
 
 def augment_lexicon_distant(old_lex, query_tokens, query_token_syntaxes,
-                            sentence, ontology, model, likelihood_fns, answer,
+                            sentence, ontology, model, likelihood_fns, scorer,
+                            answer,
                             **augment_kwargs):
   """
   Augment a lexicon with candidate meanings for a given word using distant
@@ -1097,7 +1102,7 @@ def augment_lexicon_distant(old_lex, query_tokens, query_token_syntaxes,
       tuple(likelihood_fns)
 
   return augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
-                         sentence, ontology, model, likelihood_fns,
+                         sentence, ontology, model, likelihood_fns, scorer,
                          **augment_kwargs)
 
 
