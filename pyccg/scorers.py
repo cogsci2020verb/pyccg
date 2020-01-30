@@ -136,7 +136,7 @@ class LexiconScorer(Scorer):
     categ_priors = F.softmax(categ_priors)
     categ_to_idx = dict(zip(categs, range(len(categs))))
 
-    _, total_categ_masses = self._lexicon.total_category_masses(exponentiate=True)
+    total_categ_masses = dict(zip(*self._lexicon.total_category_masses(exponentiate=True)))
 
     logp = T.zeros(())
     for _, token in parse.pos():
@@ -146,8 +146,7 @@ class LexiconScorer(Scorer):
       if prior == 0:
         return -np.inf
 
-      # TODO prefer softmax distribution
-      likelihood = T.exp(max(token.weight(), 1e-6)) / total_categ_masses[categ_idx]
+      likelihood = T.exp(max(token.weight(), 1e-6)) / total_categ_masses[token.categ()]
       logp += T.log(prior) + T.log(likelihood)
 
     return logp
