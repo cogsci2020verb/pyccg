@@ -128,6 +128,8 @@ class LexiconScorer(Scorer):
   from lexicon weights.
   """
 
+  eps = T.tensor(1e-6)
+
   def parameters(self):
     return [e.weight() for e in self._lexicon.all_entries]
 
@@ -144,9 +146,9 @@ class LexiconScorer(Scorer):
 
       prior = categ_priors[categ_idx]
       if prior == 0:
-        return -np.inf
+        return T.tensor(-np.inf)
 
-      likelihood = T.exp(max(token.weight(), 1e-6)) / total_categ_masses[token.categ()]
+      likelihood = T.exp(max(token.weight(), self.eps)) / total_categ_masses[token.categ()]
       logp += T.log(prior) + T.log(likelihood)
 
     return logp
