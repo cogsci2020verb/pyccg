@@ -198,7 +198,7 @@ class RootSemanticLengthScorer(Scorer):
     n_predicates = len(root_verb.semantics().predicates_list())
     if n_predicates < len(self.length_weights):
       return self.length_weights[n_predicates]
-
+    
     # TODO this is probably bad default behavior :)
     return T.tensor(-np.inf)
 
@@ -235,7 +235,14 @@ class FrameSemanticsScorer(Scorer):
     return self.frame_dist.parameters()
 
   # TODO override clone_with_lexicon
-
+  
+  def get_predicate_weights(self, frames):
+      """Gets predicates weights for provided frames"""
+      frames = sorted(frames)
+      f_indices = T.stack([self.frame_to_idx[f] for f in frames])
+      frame_weights = self.frame_dist.weight.index_select(0, f_indices).detach().numpy()
+      return frames, frame_weights
+  
   def forward(self, parse, sentence_meta=None):
     if sentence_meta is None or sentence_meta.get("frame_str", None) is None:
       raise ValueError("FrameSemanticsScorer requires a sentence_meta key frame_str")
@@ -259,5 +266,9 @@ class FrameSemanticsScorer(Scorer):
 
     for predicate in root_verb.semantics().predicates():
       score += predicate_logps[self.predicate_to_idx[predicate]]
-
+        
+    for predicate in root_verb.semantics().constants():
+      predicate = l.Variable(predicate.name)
+      score += predicate_logps[self.predicate_to_idx[predicate]]
+    
     return score
