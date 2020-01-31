@@ -12,7 +12,7 @@ from pyccg import chart
 from pyccg.lexicon import predict_zero_shot, \
     get_candidate_categories, get_semantic_arity, \
     augment_lexicon_nscl, augment_lexicon_distant, augment_lexicon_cross_situational, augment_lexicon_2afc, \
-    build_bootstrap_likelihood
+    build_bootstrap_likelihood, build_length_likelihood
 from pyccg.perceptron import \
     update_nscl, update_nscl_with_cached_results, \
     update_distant, update_perceptron_cross_situational, update_perceptron_2afc, _update_distant_success_fn
@@ -28,6 +28,7 @@ class WordLearner(object):
   def __init__(self, lexicon, bootstrap=False,
                scorer=None,
                learning_rate=10.0,
+               weight_decay=0.01,
                beta=3.0,
                syntax_prior_smooth=1e-3,
                meaning_prior_smooth=1e-3,
@@ -50,6 +51,7 @@ class WordLearner(object):
 
     # Learning hyperparameters
     self.learning_rate = learning_rate
+    self.weight_decay = weight_decay
     self.beta = beta
     self.syntax_prior_smooth = syntax_prior_smooth
     self.meaning_prior_smooth = meaning_prior_smooth
@@ -71,7 +73,8 @@ class WordLearner(object):
 
   def _make_optimizer(self):
     return optim.SGD(list(self.lexicon.parameters()) + list(self.scorer.parameters()),
-                     lr=self.learning_rate)
+                     lr=self.learning_rate,
+                     weight_decay=self.weight_decay)
 
   def make_parser(self, lexicon=None, ruleset=chart.DefaultRuleSet):
     """
@@ -173,11 +176,15 @@ class WordLearner(object):
 
   def _build_likelihood_fns(self, sentence, model):
     ret = []
+
     if self.bootstrap:
       ret.append(build_bootstrap_likelihood(
         self.lexicon, sentence, self.ontology,
         alpha=self.bootstrap_alpha,
         meaning_prior_smooth=self.meaning_prior_smooth))
+
+    # NB NSCL-specific: prefer longer forms
+    ret.append(build_length_likelihood(max_length=10, inverse=True))
 
     return ret
 

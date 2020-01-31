@@ -752,6 +752,28 @@ def likelihood_scene(tokens, categories, exprs, sentence_parse, model):
     return -np.inf
 
 
+def build_length_likelihood(max_length, parameter=0.8, inverse=False):
+  if inverse:
+    length_weights = [np.power(parameter, max_length - length)
+                      for length in range(max_length)]
+  else:
+    length_weights = [np.power(parameter, length)
+                      for length in range(max_length)]
+  length_weights = np.array(length_weights)
+  length_weights /= length_weights.sum()
+  length_weights = np.log(length_weights)
+
+  def likelihood_fn(tokens, categories, exprs, sentence_parse, model):
+    likelihood = 0.0
+    for expr in exprs:
+      n_predicates = len(expr.predicates_list())
+      if n_predicates < len(length_weights):
+        return length_weights[n_predicates]
+      return -np.inf
+
+  return likelihood_fn
+
+
 def build_distant_likelihood(answer):
   """
   Prepare a likelihood function `p(meaning | syntax, sentence)` based on
