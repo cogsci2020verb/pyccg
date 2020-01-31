@@ -66,7 +66,7 @@ def update_reinforce(learner, sentence, model, success_fn,
                                   return_aux=True)
   if not weighted_results:
     raise NoParsesSyntaxError("No successful parses computed.", sentence)
-
+    
   rewards = [success_fn(result, model)[1] for result, _, _ in weighted_results]
   parses = [parse for parse, _, _ in weighted_results]
   logps = [logp for _, logp, _ in weighted_results]

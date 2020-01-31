@@ -198,7 +198,40 @@ class WordLearner(object):
         self.lexicon, query_tokens, query_token_syntaxes, sentence,
         self.ontology, model, self._build_likelihood_fns(sentence, model))
     return query_token_syntaxes, candidates
-
+    
+  def predict_zero_shot_nscl(self, sentence, model, sentence_meta, answer, augment_lexicon_args):
+    """Yield expected zero_shot accuracy on a novel sentence, marginalizing over 
+    possible novel lexical entries required to parse the sentence.
+    """
+    kwargs = {"answer": answer}
+    augment_lexicon_args.update(kwargs)
+    
+    parser = self.make_parser()
+    weighted_results = parser.parse(sentence, sentence_meta=sentence_meta, return_aux=True)
+    if len(weighted_results) == 0:
+      L.warning("Parse failed for sentence '%s'", " ".join(sentence))
+      aug_lexicon = self.do_lexical_induction(sentence, 
+                                              model=model,
+                                              augment_lexicon_fn=augment_lexicon_nscl,
+                                              sentence_meta=sentence_meta,
+                                              **augment_lexicon_args)
+      aug_scorer = self.scorer.clone_with_lexicon(aug_lexicon)
+      parser = chart.WeightedCCGChartParser(lexicon=aug_lexicon,
+                                          scorer=aug_scorer,
+                                          ruleset=chart.DefaultRuleSet)
+      weighted_results = parser.parse(sentence, sentence_meta=sentence_meta, return_aux=True)
+     
+    # Normalize scores
+    print(weighted_results)
+    import pdb; pdb.set_trace();
+    assert False
+    # Marginalize over expected weighted results.
+    expected_accuracy = 0.0
+    for result, score, _ in weighted_results:
+      semantics = result.label()[0].semantics()
+      if (model.evaluate(semantics) == True):
+          expected_accuracy += np.exp(score)
+              
   def predict_zero_shot_2afc(self, sentence, model1, model2):
     """
     Yield zero-shot predictions on a 2AFC sentence, marginalizing over possible
@@ -352,6 +385,8 @@ class WordLearner(object):
                                       normalized_scores, answer_scores,
                                       sentence_meta=None,
                                       augment_lexicon_args=None, update_args=None):
+    print(parses)
+    assert False
     augment_lexicon_args = augment_lexicon_args or {}
     update_args = update_args or {}
 
