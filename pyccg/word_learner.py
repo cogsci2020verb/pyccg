@@ -391,8 +391,6 @@ class WordLearner(object):
                                       normalized_scores, answer_scores,
                                       sentence_meta=None,
                                       augment_lexicon_args=None, update_args=None):
-    print(parses)
-    assert False
     augment_lexicon_args = augment_lexicon_args or {}
     update_args = update_args or {}
 
