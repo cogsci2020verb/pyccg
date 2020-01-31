@@ -3,6 +3,9 @@ import itertools
 import logging
 
 import numpy as np
+import torch as T
+from torch import nn
+from torch.nn import functional as F
 from torch import optim
 
 from pyccg import chart
@@ -12,7 +15,7 @@ from pyccg.lexicon import predict_zero_shot, \
     build_bootstrap_likelihood
 from pyccg.perceptron import \
     update_nscl, update_nscl_with_cached_results, \
-    update_distant, update_perceptron_cross_situational, update_perceptron_2afc
+    update_distant, update_perceptron_cross_situational, update_perceptron_2afc, _update_distant_success_fn
 from pyccg.scorers import LexiconScorer
 from pyccg.util import Distribution, NoParsesError, NoParsesSyntaxError
 
@@ -220,17 +223,14 @@ class WordLearner(object):
                                           scorer=aug_scorer,
                                           ruleset=chart.DefaultRuleSet)
       weighted_results = parser.parse(sentence, sentence_meta=sentence_meta, return_aux=True)
-     
-    # Normalize scores
-    print(weighted_results)
-    import pdb; pdb.set_trace();
-    assert False
+
+    # TODO (@CatherineWong): currently uses raw log probs. Could consider
+    # top-k accuracy.
     # Marginalize over expected weighted results.
-    expected_accuracy = 0.0
-    for result, score, _ in weighted_results:
-      semantics = result.label()[0].semantics()
-      if (model.evaluate(semantics) == True):
-          expected_accuracy += np.exp(score)
+    rewards = [_update_distant_success_fn(result, model, answer)[1] for result, _, _ in weighted_results]
+    success = T.stack([T.tensor(reward) for reward in rewards])
+    probs = T.exp(T.stack([logp.detach() for _, logp, _ in weighted_results]))
+    return (success * probs).sum().numpy()
               
   def predict_zero_shot_2afc(self, sentence, model1, model2):
     """
