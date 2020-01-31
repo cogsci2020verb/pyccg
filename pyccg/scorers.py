@@ -144,9 +144,8 @@ class LexiconScorer(Scorer):
     for _, token in parse.pos():
       categ_idx = categ_to_idx[token.categ()]
 
-      prior = categ_priors[categ_idx]
-      if prior == 0:
-        return T.tensor(-np.inf)
+      # Uniform prior
+      prior = T.tensor(1.)
 
       likelihood = T.exp(max(token.weight(), self.eps)) / total_categ_masses[token.categ()]
       logp += T.log(prior) + T.log(likelihood)
