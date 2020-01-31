@@ -46,6 +46,24 @@ def _make_mock_model(learner):
   return Model({"objects": []}, learner.ontology)
 
 
+def _assert_entries_match(lexicon1, lexicon2, token):
+  """
+  Assert that two lexicons have the same entries for some token, but without
+  checking weight differences.
+  """
+  eq_(set((tok.categ(), tok.semantics()) for tok in lexicon1._entries[token]),
+      set((tok.categ(), tok.semantics()) for tok in lexicon2._entries[token]))
+
+
+def _assert_all_entries_match(lexicon1, lexicon2):
+  """
+  Assert that two lexicons have entirely the same tokens and entries, but without checking weight differences.
+  """
+  eq_(set(lexicon1._entries.keys()), set(lexicon2._entries.keys()))
+  for token in lexicon1._entries:
+    _assert_entries_match(lexicon1, lexicon2, token)
+
+
 def test_update_distant_existing_words():
   """
   update_distant with no novel words
@@ -63,8 +81,7 @@ def test_update_distant_existing_words():
   print("====\n")
   learner.lexicon.debug_print()
 
-  eq_(set([(e.categ(), e.semantics()) for e in old_lex.all_entries]),
-      set([(e.categ(), e.semantics()) for e in learner.lexicon.all_entries]))
+  _assert_all_entries_match(old_lex, learner.lexicon)
 
 
 def test_update_distant_existing_words_reinforce():
@@ -93,8 +110,7 @@ def test_update_distant_existing_words_reinforce():
   print("====\n")
   learner.lexicon.debug_print()
 
-  eq_(set([(e.categ(), e.semantics()) for e in old_lex.all_entries]),
-      set([(e.categ(), e.semantics()) for e in learner.lexicon.all_entries]))
+  _assert_all_entries_match(old_lex, learner.lexicon)
 
   # Weight update should support the used tokens
   ok_(learner.lexicon._entries["goto"][0].weight() > learner.lexicon._entries["go"][0].weight())
@@ -118,10 +134,8 @@ def test_update_distant_one_novel_word():
   learner.lexicon.debug_print()
 
   # other words should not have changed.
-  eq_(set((e.categ(), e.semantics()) for e in old_lex._entries["there"]),
-      set((e.categ(), e.semantics()) for e in learner.lexicon._entries["there"]))
-  eq_(set((e.categ(), e.semantics()) for e in old_lex._entries["goto"]),
-      set((e.categ(), e.semantics()) for e in learner.lexicon._entries["goto"]))
+  for word in ["there", "goto"]:
+    _assert_entries_match(old_lex, learner.lexicon, word)
 
   eq_(len(learner.lexicon._entries["here"]), 1, "One valid new word entry")
   entry = learner.lexicon._entries["here"][0]
@@ -185,7 +199,7 @@ def test_update_distant_one_novel_sense():
   learner.lexicon.debug_print()
 
   # other words should not have changed.
-  eq_(old_lex._entries["goto"], learner.lexicon._entries["goto"])
+  _assert_entries_match(old_lex, learner.lexicon, "goto")
 
   eq_(len(learner.lexicon._entries["there"]), 1, "New entry for 'there'")
   entry = learner.lexicon._entries["there"][0]
@@ -231,7 +245,7 @@ def test_learner_with_frame_scorer():
   learner = _make_mock_learner()
 
   frames = ["A _ A", "A _ B"]
-  frame_scorer = FrameSemanticsScorer(learner.lexicon, frames, root_types=[r"(S/N)"])
+  frame_scorer = scorers.FrameSemanticsScorer(learner.lexicon, frames, root_types=[r"(S/N)"])
   learner.add_scorer(frame_scorer)
 
   sentence = "goto there".split()

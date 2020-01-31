@@ -25,6 +25,7 @@ class WordLearner(object):
   def __init__(self, lexicon, bootstrap=False,
                scorer=None,
                learning_rate=10.0,
+               weight_decay=0.01,
                beta=3.0,
                syntax_prior_smooth=1e-3,
                meaning_prior_smooth=1e-3,
@@ -47,6 +48,7 @@ class WordLearner(object):
 
     # Learning hyperparameters
     self.learning_rate = learning_rate
+    self.weight_decay = weight_decay
     self.beta = beta
     self.syntax_prior_smooth = syntax_prior_smooth
     self.meaning_prior_smooth = meaning_prior_smooth
@@ -68,7 +70,8 @@ class WordLearner(object):
 
   def _make_optimizer(self):
     return optim.SGD(list(self.lexicon.parameters()) + list(self.scorer.parameters()),
-                     lr=self.learning_rate)
+                     lr=self.learning_rate,
+                     weight_decay=self.weight_decay)
 
   def make_parser(self, lexicon=None, ruleset=chart.DefaultRuleSet):
     """

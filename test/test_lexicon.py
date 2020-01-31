@@ -2,6 +2,7 @@ from nose.tools import *
 
 from pyccg.lexicon import *
 from pyccg import logic as l
+from pyccg import scorers
 from pyccg.chart import WeightedCCGChartParser
 
 from nltk.ccg.lexicon import FunctionalCategory, PrimitiveCategory, Direction
@@ -309,11 +310,13 @@ def test_attempt_candidate_parse():
   """, include_semantics=True)
   # TODO this doesn't actually require composition .. get one which does
 
+  scorer = scorers.LexiconScorer(lex)
   cand_category = lex.parse_category(r"S\N/N/N")
   cand_expressions = [l.Expression.fromstring(r"\o x y.give(x,y,o)")]
   dummy_vars = {"sends": l.Variable("F000")}
   results = attempt_candidate_parse(lex, ["sends"], [cand_category],
                                     "John sends Mark it".split(),
+                                    scorer,
                                     dummy_vars)
 
   ok_(len(results) > 0)
