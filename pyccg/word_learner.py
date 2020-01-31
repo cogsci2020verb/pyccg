@@ -230,13 +230,12 @@ class WordLearner(object):
                                           scorer=aug_scorer,
                                           ruleset=chart.DefaultRuleSet)
       weighted_results = parser.parse(sentence, sentence_meta=sentence_meta, return_aux=True)
-
-    # TODO (@CatherineWong): currently uses raw log probs. Could consider
-    # top-k accuracy.
+    
     # Marginalize over expected weighted results.
     rewards = [_update_distant_success_fn(result, model, answer)[1] for result, _, _ in weighted_results]
     success = T.stack([T.tensor(reward) for reward in rewards])
     probs = T.exp(T.stack([logp.detach() for _, logp, _ in weighted_results]))
+    probs = probs / T.sum(probs)
     return (success * probs).sum().numpy()
               
   def predict_zero_shot_2afc(self, sentence, model1, model2):
