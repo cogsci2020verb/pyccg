@@ -81,7 +81,7 @@ class Scorer(nn.Module):
 
 
 class EmptyScorer(Scorer):
-  def forward(self, parse):
+  def forward(self, parse, sentence_meta=None):
     return T.zeros(())
 
 
