@@ -225,18 +225,28 @@ class WordLearner(object):
                                               augment_lexicon_fn=augment_lexicon_nscl,
                                               sentence_meta=sentence_meta,
                                               **augment_lexicon_args)
-      aug_scorer = self.scorer.clone_with_lexicon(aug_lexicon)
       parser = chart.WeightedCCGChartParser(lexicon=aug_lexicon,
-                                          scorer=aug_scorer,
+                                          scorer=self.scorer,
                                           ruleset=chart.DefaultRuleSet)
       weighted_results = parser.parse(sentence, sentence_meta=sentence_meta, return_aux=True)
     
-    # Marginalize over expected weighted results.
+    # Marginalize over expected weighted results. # Try only top N?
+    if len(weighted_results) == 0:
+        return np.array([0.0])
     rewards = [_update_distant_success_fn(result, model, answer)[1] for result, _, _ in weighted_results]
     success = T.stack([T.tensor(reward) for reward in rewards])
     probs = T.exp(T.stack([logp.detach() for _, logp, _ in weighted_results]))
     probs = probs / T.sum(probs)
-    return (success * probs).sum().numpy()
+    probs, success = probs.numpy(), success.numpy()
+    
+    # Consider only the top N
+    def top_n_expected(top_n):
+        top_n_probs, top_n_success = probs[np.argsort(-probs)][:top_n], success[np.argsort(-probs)][:top_n]
+        top_n_probs /= np.sum(top_n_probs)
+        return np.sum((top_n_probs * top_n_success))
+    top_5, top_10, top_20, top_50 = top_n_expected(5), top_n_expected(10), top_n_expected(20), top_n_expected(50)
+    
+    return top_5, top_10, top_20, top_50
               
   def predict_zero_shot_2afc(self, sentence, model1, model2):
     """
