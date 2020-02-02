@@ -276,7 +276,7 @@ class WordLearner(object):
 
     # Marginalize over expected weighted results. # Try only top N?
     if len(weighted_results) == 0:
-        return aug_lexicon, np.array([0.0])
+      return aug_lexicon, {0: 0.0}
 
     rewards = [_update_distant_success_fn(result, model, answer)[1] for result, _, _ in weighted_results]
     success = T.stack([T.tensor(reward) for reward in rewards])
@@ -286,12 +286,13 @@ class WordLearner(object):
 
     # Consider only the top N
     def top_n_expected(top_n):
-        top_n_probs, top_n_success = probs[np.argsort(-probs)][:top_n], success[np.argsort(-probs)][:top_n]
-        top_n_probs /= np.sum(top_n_probs)
-        return np.sum((top_n_probs * top_n_success))
-    top_5, top_10, top_20, top_50 = top_n_expected(5), top_n_expected(10), top_n_expected(20), top_n_expected(50)
+      top_n_probs, top_n_success = probs[np.argsort(-probs)][:top_n], success[np.argsort(-probs)][:top_n]
+      top_n_probs /= np.sum(top_n_probs)
+      return np.sum((top_n_probs * top_n_success))
 
-    return aug_lexicon, (top_5, top_10, top_20, top_50)
+    top_n = {n: top_n_expected(n) for n in [5, 10, 20, 50, 100]}
+
+    return aug_lexicon, top_n
 
   def predict_zero_shot_2afc(self, sentence, model1, model2):
     """
