@@ -183,6 +183,15 @@ class Lexicon(ccg_lexicon.CCGLexicon):
     token = Token(word, category, semantics=semantics, weight=weight)
     self._entries[word].append(token)
 
+  def merge_entries_word(self, other_lexicons, merge_word):
+    for word in other_lexicons._entries:
+      if word == merge_word:
+        if word in self._entries:
+            L.critical("Alert: merging in entry that already exists.")
+        self._entries[word] = list()
+        for token in other_lexicons._entries[word]:
+          self._entries[word].append(token.clone())
+  
   def merge_entries(self, other_lexicons):
     for word in other_lexicons._entries:
       if word not in self._entries:

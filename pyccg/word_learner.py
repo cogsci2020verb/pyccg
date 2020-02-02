@@ -188,6 +188,42 @@ class WordLearner(object):
 
     return ret
 
+  def generative_cross_entropy(self, sentence, model, sentence_meta, answer, lemmas, augment_lexicon_args):
+    """Yield 'generative' cross entropy by comparing weighted scores over parses containing 
+    a ground truth lemma vs. a set of other lemmas. Requires that 'sentence' contain
+    one of the lemmas."""
+    # Generate masked indices where the true sentence is at index 0.
+    true_lemma = [l for l in sentence if l in lemmas][0]
+    other_lemmas = [l for l in lemmas if l != true_lemma]
+    masked_sentences = [sentence] + [
+        [token if token not in lemmas else l for token in sentence]
+        for l in other_lemmas
+    ]
+    parser = self.make_parser()
+    confidences = []
+    for masked in masked_sentences:
+        weighted_results = parser.parse(masked, sentence_meta=sentence_meta, return_aux=True)
+        if len(weighted_results) == 0:
+            L.warning("Parse failed for sentence '%s'", " ".join(masked))
+            per_lemma_confidence = T.tensor(0.).double()
+        else:
+            rewards = [_update_distant_success_fn(result, model, answer)[1] for result, _, _ in weighted_results]
+            success = T.stack([T.tensor(reward) for reward in rewards])
+            probs = T.exp(T.stack([logp.detach() for _, logp, _ in weighted_results]))
+            probs = probs / T.sum(probs)
+            per_lemma_confidence = T.sum(probs * success).double()
+        confidences.append(per_lemma_confidence)
+    
+    # Normalize.
+    confidences = T.stack(confidences)
+    def norm_scores(scores):
+        if T.sum(scores) == 0:
+            scores = T.ones_like(scores)
+        return scores / T.sum(scores)
+    confidences = norm_scores(confidences)
+    # Cross entropy --> weight on the true answer, which is the first sentence.
+    return confidences[0].numpy()
+  
   def predict_zero_shot_tokens(self, sentence, model):
     """
     Yield zero-shot predictions on the syntax and meaning of words in the
