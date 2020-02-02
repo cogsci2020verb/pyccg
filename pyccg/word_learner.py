@@ -244,46 +244,55 @@ class WordLearner(object):
         self.lexicon, query_tokens, query_token_syntaxes, sentence,
         self.ontology, model, self._build_likelihood_fns(sentence, model))
     return query_token_syntaxes, candidates
-    
+
   def predict_zero_shot_nscl(self, sentence, model, sentence_meta, answer, augment_lexicon_args):
-    """Yield expected zero_shot accuracy on a novel sentence, marginalizing over 
+    """Yield expected zero_shot accuracy on a novel sentence, marginalizing over
     possible novel lexical entries required to parse the sentence.
     """
     kwargs = {"answer": answer}
     augment_lexicon_args.update(kwargs)
-    
+
     parser = self.make_parser()
     weighted_results = parser.parse(sentence, sentence_meta=sentence_meta, return_aux=True)
     if len(weighted_results) == 0:
       L.warning("Parse failed for sentence '%s'", " ".join(sentence))
-      aug_lexicon = self.do_lexical_induction(sentence, 
+      aug_lexicon = self.do_lexical_induction(sentence,
                                               model=model,
                                               augment_lexicon_fn=augment_lexicon_nscl,
                                               sentence_meta=sentence_meta,
                                               **augment_lexicon_args)
+
+      # NB, we don't re-instantiate the scorer with the novel lexicon. That's
+      # actually okay for the frame-based inference, since the frame--meaning
+      # knowledge was baked into the initial weights of the lexicon during
+      # induction. But this is hacky, and should be fixed when the rest of the
+      # induction--learning dissociation is finally addressed.
       parser = chart.WeightedCCGChartParser(lexicon=aug_lexicon,
-                                          scorer=self.scorer,
-                                          ruleset=chart.DefaultRuleSet)
+                                            scorer=self.scorer,
+                                            ruleset=chart.DefaultRuleSet)
       weighted_results = parser.parse(sentence, sentence_meta=sentence_meta, return_aux=True)
-    
+    else:
+      aug_lexicon = self.lexicon
+
     # Marginalize over expected weighted results. # Try only top N?
     if len(weighted_results) == 0:
-        return np.array([0.0])
+        return aug_lexicon, np.array([0.0])
+
     rewards = [_update_distant_success_fn(result, model, answer)[1] for result, _, _ in weighted_results]
     success = T.stack([T.tensor(reward) for reward in rewards])
     probs = T.exp(T.stack([logp.detach() for _, logp, _ in weighted_results]))
     probs = probs / T.sum(probs)
     probs, success = probs.numpy(), success.numpy()
-    
+
     # Consider only the top N
     def top_n_expected(top_n):
         top_n_probs, top_n_success = probs[np.argsort(-probs)][:top_n], success[np.argsort(-probs)][:top_n]
         top_n_probs /= np.sum(top_n_probs)
         return np.sum((top_n_probs * top_n_success))
     top_5, top_10, top_20, top_50 = top_n_expected(5), top_n_expected(10), top_n_expected(20), top_n_expected(50)
-    
-    return top_5, top_10, top_20, top_50
-              
+
+    return aug_lexicon, (top_5, top_10, top_20, top_50)
+
   def predict_zero_shot_2afc(self, sentence, model1, model2):
     """
     Yield zero-shot predictions on a 2AFC sentence, marginalizing over possible

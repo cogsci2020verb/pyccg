@@ -774,11 +774,18 @@ def build_length_likelihood(max_length, parameter=0.8, inverse=False):
 
   def likelihood_fn(tokens, categories, exprs, sentence_parse, model):
     likelihood = 0.0
+
     for expr in exprs:
-      n_predicates = len(expr.predicates_list())
+      # HACK: Faster way to count predicates.
+      n_predicates = str(expr).count("(")
+      # n_predicates = len(expr.predicates_list())
+
       if n_predicates < len(length_weights):
-        return length_weights[n_predicates]
-      return -np.inf
+        likelihood += length_weights[n_predicates]
+      else:
+        return -np.inf
+
+    return likelihood
 
   return likelihood_fn
 

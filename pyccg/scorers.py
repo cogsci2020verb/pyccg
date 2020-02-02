@@ -221,6 +221,7 @@ class FrameSemanticsScorer(Scorer):
                          for idx, frame in enumerate(sorted(self.frames))}
 
     self.root_types = set(root_types)
+    self.gradients_disabled = False
 
     ontology = self._lexicon.ontology
     self.predicates = [l.Variable(val.name) for val in ontology.functions + ontology.constants]
@@ -231,17 +232,24 @@ class FrameSemanticsScorer(Scorer):
     nn.init.zeros_(self.frame_dist.weight)
 
   def parameters(self):
+    # HACK: some de-pickled scorers are missing the gradients_disabled entry ..
+    if hasattr(self, "gradients_disabled") and self.gradients_disabled:
+      return []
     return self.frame_dist.parameters()
 
   # TODO override clone_with_lexicon
-  
+
+  def disable_gradients(self):
+    self.gradients_disabled = True
+    self.frame_dist.weight.requires_grad = False
+
   def get_predicate_weights(self, frames):
       """Gets predicates weights for provided frames"""
       frames = sorted(frames)
       f_indices = T.stack([self.frame_to_idx[f] for f in frames])
       frame_weights = self.frame_dist.weight.index_select(0, f_indices).detach().numpy()
       return frames, frame_weights
-  
+
   def forward(self, parse, sentence_meta=None):
     if sentence_meta is None or sentence_meta.get("frame_str", None) is None:
       raise ValueError("FrameSemanticsScorer requires a sentence_meta key frame_str")
