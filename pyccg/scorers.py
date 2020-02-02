@@ -221,6 +221,7 @@ class FrameSemanticsScorer(Scorer):
                          for idx, frame in enumerate(sorted(self.frames))}
 
     self.root_types = set(root_types)
+    self.gradients_disabled = False
 
     ontology = self._lexicon.ontology
     self.predicates = [l.Variable(val.name) for val in ontology.functions + ontology.constants]
@@ -230,10 +231,9 @@ class FrameSemanticsScorer(Scorer):
     self.frame_dist = nn.Embedding(len(self.frames), len(self.predicates))
     nn.init.zeros_(self.frame_dist.weight)
 
-    self.gradients_disabled = False
-
   def parameters(self):
-    if self.gradients_disabled:
+    # HACK: some de-pickled scorers are missing the gradients_disabled entry ..
+    if hasattr(self, "gradients_disabled") and self.gradients_disabled:
       return []
     return self.frame_dist.parameters()
 
