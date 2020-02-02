@@ -230,18 +230,26 @@ class FrameSemanticsScorer(Scorer):
     self.frame_dist = nn.Embedding(len(self.frames), len(self.predicates))
     nn.init.zeros_(self.frame_dist.weight)
 
+    self.gradients_disabled = False
+
   def parameters(self):
+    if self.gradients_disabled:
+      return []
     return self.frame_dist.parameters()
 
   # TODO override clone_with_lexicon
-  
+
+  def disable_gradients(self):
+    self.gradients_disabled = True
+    self.frame_dist.weight.requires_grad = False
+
   def get_predicate_weights(self, frames):
       """Gets predicates weights for provided frames"""
       frames = sorted(frames)
       f_indices = T.stack([self.frame_to_idx[f] for f in frames])
       frame_weights = self.frame_dist.weight.index_select(0, f_indices).detach().numpy()
       return frames, frame_weights
-  
+
   def forward(self, parse, sentence_meta=None):
     if sentence_meta is None or sentence_meta.get("frame_str", None) is None:
       raise ValueError("FrameSemanticsScorer requires a sentence_meta key frame_str")
