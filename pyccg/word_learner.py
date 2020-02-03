@@ -224,7 +224,7 @@ class WordLearner(object):
         return scores / T.sum(scores)
     confidences = norm_scores(confidences).numpy()
     # Cross entropy --> weight on the true answer, which is the first sentence.
-    return lemma, lemma_seq, confidences, -np.log(confidences[0])
+    return true_lemma, lemma_seq, confidences, -np.log(confidences[0])
 
   def predict_zero_shot_tokens(self, sentence, model):
     """
