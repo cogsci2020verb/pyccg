@@ -199,6 +199,8 @@ class WordLearner(object):
         [token if token not in lemmas else l for token in sentence]
         for l in other_lemmas
     ]
+    lemma_seq = [true_lemma] + other_lemmas
+
     parser = self.make_parser()
     confidences = []
     for masked in masked_sentences:
@@ -213,17 +215,17 @@ class WordLearner(object):
             probs = probs / T.sum(probs)
             per_lemma_confidence = T.sum(probs * success).double()
         confidences.append(per_lemma_confidence)
-    
+
     # Normalize.
     confidences = T.stack(confidences)
     def norm_scores(scores):
         if T.sum(scores) == 0:
             scores = T.ones_like(scores)
         return scores / T.sum(scores)
-    confidences = norm_scores(confidences)
+    confidences = norm_scores(confidences).numpy()
     # Cross entropy --> weight on the true answer, which is the first sentence.
-    return confidences[0].numpy()
-  
+    return lemma, lemma_seq, confidences, -np.log(confidences[0])
+
   def predict_zero_shot_tokens(self, sentence, model):
     """
     Yield zero-shot predictions on the syntax and meaning of words in the
@@ -290,7 +292,7 @@ class WordLearner(object):
       top_n_probs /= np.sum(top_n_probs)
       return np.sum((top_n_probs * top_n_success))
 
-    top_n = {n: top_n_expected(n) for n in [5, 10, 20, 50, 100]}
+    top_n = {n: top_n_expected(n) for n in [5, 10, 20, 50, 100, 1000]}
 
     return aug_lexicon, top_n
 
