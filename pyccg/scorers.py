@@ -247,8 +247,11 @@ class FrameSemanticsScorer(Scorer):
       """Gets predicates weights for provided frames"""
       frames = sorted(frames)
       f_indices = T.stack([self.frame_to_idx[f] for f in frames])
-      frame_weights = self.frame_dist.weight.index_select(0, f_indices).detach().numpy()
-      return frames, frame_weights
+
+      frame_weights = self.frame_dist.weight.index_select(0, f_indices).detach()
+      frame_weights = F.softmax(frame_weights)
+
+      return frames, frame_weights.numpy()
 
   def forward(self, parse, sentence_meta=None):
     if sentence_meta is None or sentence_meta.get("frame_str", None) is None:
