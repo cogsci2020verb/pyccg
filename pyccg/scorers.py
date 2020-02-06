@@ -197,7 +197,7 @@ class RootSemanticLengthScorer(Scorer):
     n_predicates = len(root_verb.semantics().predicates_list())
     if n_predicates < len(self.length_weights):
       return self.length_weights[n_predicates]
-    
+
     # TODO this is probably bad default behavior :)
     return T.tensor(-np.inf)
 
@@ -249,7 +249,7 @@ class FrameSemanticsScorer(Scorer):
       f_indices = T.stack([self.frame_to_idx[f] for f in frames])
 
       frame_weights = self.frame_dist.weight.index_select(0, f_indices).detach()
-      frame_weights = F.softmax(frame_weights)
+      frame_weights = F.softmax(frame_weights, dim=1)
 
       return frames, frame_weights.numpy()
 
@@ -276,9 +276,9 @@ class FrameSemanticsScorer(Scorer):
 
     for predicate in root_verb.semantics().predicates():
       score += predicate_logps[self.predicate_to_idx[predicate]]
-        
+
     for predicate in root_verb.semantics().constants():
       predicate = l.Variable(predicate.name)
       score += predicate_logps[self.predicate_to_idx[predicate]]
-    
+
     return score
