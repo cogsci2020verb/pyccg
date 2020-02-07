@@ -1,5 +1,7 @@
 from nose.tools import *
 
+from torch.nn import functional as F
+
 from pyccg import lexicon as lex
 from pyccg import logic as log
 from pyccg.scorers import *
@@ -62,3 +64,41 @@ def test_length_scorer():
   longer_parse_idx = next(i for i, (parse, _, _) in enumerate(results)
                           if "id" in str(parse.label()[0].semantics()))
   ok_(scores[longer_parse_idx] > scores[1 - longer_parse_idx])
+
+
+def test_frame_scorer_pretrained():
+  """
+  Load a FrameScorer with a pretrained weight matrix, which only accounts for a
+  subset of actual possible predicates.
+  """
+  learner = _make_mock_learner()
+  ontology = learner.ontology
+
+  all_frames = ["nsubj _", "nsubj _ dobj"]
+  tracked_constants = ["there", "here"]
+  untracked_constants = set(ontology.constants_dict.keys()) - set(tracked_constants)
+
+  frame_weights = np.random.random(size=(len(all_frames), len(tracked_constants)))
+
+  frame_scorer = FrameSemanticsScorer(learner.lexicon, all_frames,
+      root_types=(r"N",),
+      frame_weights=frame_weights,
+      predicates=tracked_constants)
+  frame_scorer.disable_gradients()
+  learner.scorer = frame_scorer
+
+  sentence = "go there".split()
+  answer = ("go", "there")
+
+  import pandas as pd
+  frame_log_softmax = F.log_softmax(T.tensor(frame_weights), dim=1).numpy()
+  frame_log_softmax = pd.DataFrame(frame_log_softmax, index=all_frames, columns=tracked_constants)
+  print(frame_log_softmax)
+
+  for frame in all_frames:
+    results = learner.make_parser().parse(sentence,
+                                          sentence_meta={"frame_str": frame},
+                                          return_aux=True)
+
+    result_weight = results[0][1]
+    eq_(result_weight, frame_log_softmax.loc[frame, "there"])

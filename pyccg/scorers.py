@@ -206,30 +206,65 @@ class FrameSemanticsScorer(Scorer):
 
   requires_semantics = True
 
-  def __init__(self, lexicon, frames, root_types=(r"(S\N)", r"((S\N)/N)")):
+  def __init__(self, lexicon, frames,
+               root_types=(r"(S\N)", r"((S\N)/N)"),
+               frame_weights=None,
+               predicates=None):
     """
     Args:
       lexicon:
       frames: Collection of all possible frame strings
       root_types: CCG syntactic type strings of lexical entries for which we
-        are collecting frames
+        are collecting frames64G
+      frame_weights: Optional pre-trained `frames * predicates` matrix. The
+        `i`th row of this matrix corresponds to the predicate weights for the
+        `i`th entry in `frames`.
+      predicates: Required iff `frame_weights` is provided. The `j`th entry in
+        this list corresponds to the `j`th column of `frame_weights`.
     """
     super().__init__(lexicon)
 
     self.frames = frames
+
+    # Sort the list of frames when preparing row indices.
+    # BUT if pretrained frame_weights was provided, make sure we preserve the
+    # correct frame--index mappings.
+    frame_iterator = enumerate(self.frames) if frame_weights is not None else enumerate(sorted(self.frames))
     self.frame_to_idx = {frame: T.tensor(idx, requires_grad=False)
-                         for idx, frame in enumerate(sorted(self.frames))}
+                         for idx, frame in frame_iterator}
 
     self.root_types = set(root_types)
     self.gradients_disabled = False
 
     ontology = self._lexicon.ontology
-    self.predicates = [l.Variable(val.name) for val in ontology.functions + ontology.constants]
-    self.predicate_to_idx = {pred: idx for idx, pred in enumerate(sorted(self.predicates))}
+
+    if frame_weights is not None:
+      if predicates is None:
+        raise ValueError("If pretrained frame weights are provided, you must "
+                         "also provide ordered an `predicates` list.")
+
+      self.predicates, self.predicate_to_idx = [], {}
+      all_keys = set(ontology.constants_dict.keys()) | set(ontology.functions_dict.keys())
+      for idx, predicate in enumerate(predicates):
+        if predicate not in all_keys:
+          raise ValueError("Unknown pre-trained predicate `%s` not available in this ontology" % predicate)
+
+        pred = l.Variable(predicate)
+        self.predicates.append(pred)
+        self.predicate_to_idx[pred] = idx
+    else:
+      self.predicates = [l.Variable(val.name) for val in ontology.functions + ontology.constants]
+      self.predicate_to_idx = {pred: idx for idx, pred in enumerate(sorted(self.predicates))}
 
     # Represent unnormalized frame distributions as an embedding layer
-    self.frame_dist = nn.Embedding(len(self.frames), len(self.predicates))
-    nn.init.zeros_(self.frame_dist.weight)
+    weights_shape = (len(self.frames), len(self.predicates))
+    if frame_weights is not None:
+      assert frame_weights.shape == weights_shape, \
+          "pretrained %s != expected %s" % (frame_weights.shape, weights_shape)
+      self.frame_dist = nn.Embedding.from_pretrained(T.tensor(frame_weights))
+    else:
+      self.frame_dist = nn.Embedding(*weights_shape)
+      nn.init.zeros_(self.frame_dist.weight)
 
   def parameters(self):
     # HACK: some de-pickled scorers are missing the gradients_disabled entry ..
@@ -274,11 +309,13 @@ class FrameSemanticsScorer(Scorer):
         root_verb = None
         return score
 
-    for predicate in root_verb.semantics().predicates():
-      score += predicate_logps[self.predicate_to_idx[predicate]]
+    # DEV: skip predicates.
+    # for predicate in root_verb.semantics().predicates():
+    #   score += predicate_logps[self.predicate_to_idx[predicate]]
 
-    for predicate in root_verb.semantics().constants():
-      predicate = l.Variable(predicate.name)
-      score += predicate_logps[self.predicate_to_idx[predicate]]
+    for constant in root_verb.semantics().constants():
+      constant = l.Variable(constant.name)
+      if constant in self.predicate_to_idx:
+        score += predicate_logps[self.predicate_to_idx[constant]]
 
     return score
