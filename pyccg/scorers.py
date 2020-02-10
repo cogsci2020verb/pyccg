@@ -296,10 +296,12 @@ class FrameSemanticsScorer(Scorer):
     try:
       frame_idx = self.frame_to_idx[frame]
     except KeyError:
-      raise ValueError("Unknown frame string %s" % frame)
+      # Uniform weights over predicates.
+      predicate_weights = T.ones((len(self.predicate_to_idx),))
+    else:
+      predicate_weights = self.frame_dist(self.frame_to_idx[frame])
 
-    ret = self.frame_dist(self.frame_to_idx[frame])
-    predicate_logps = F.log_softmax(ret)
+    predicate_logps = F.log_softmax(predicate_weights)
 
     score = T.zeros(())
     try:
