@@ -341,32 +341,31 @@ class FrameSemanticsScorer(Scorer):
 
     score = T.zeros(())
     try:
-        root_verb = next(tok for _, tok in parse.pos()
-                         if str(tok.categ()) in self.root_types)
+      root_verb = next(tok for _, tok in parse.pos()
+                       if str(tok.categ()) in self.root_types)
     except:
-        root_verb = None
-        return score
+      root_verb = None
+      return score
 
     # DEV: skip predicates.
     # for predicate in root_verb.semantics().predicates():
     #   score += predicate_logps[self.predicate_to_idx[predicate]]
- 
+
     if self.predicate_mode == 'unigram':
-        for constant in root_verb.semantics().constants():
-          constant = l.Variable(constant.name)
-          if constant in self.predicate_to_idx:
-            score += predicate_logps[self.predicate_to_idx[constant]]
+      for constant in root_verb.semantics().constants():
+        constant = l.Variable(constant.name)
+        if constant in self.predicate_to_idx:
+          score += predicate_logps[self.predicate_to_idx[constant]]
 
     elif self.predicate_mode == 'bigram':
-        try:
-            constants = root_verb.semantics().constants_list()
-            constants = [l.Variable(c.name) for c in constants]
-            constants.reverse()
-            # DEV: only get conjuncts: predicates with associated constants.
-            predicates = root_verb.semantics().predicates_list()[-len(constants):]
-            bigrams = list(zip(predicates, constants))
-            for bigram in bigrams:
-                if bigram in self.predicate_to_idx:
-                    score += predicate_logps[self.predicate_to_idx[bigram]]
+      constants = root_verb.semantics().constants_list()
+      constants = [l.Variable(c.name) for c in constants]
+      constants.reverse()
+      # DEV: only get conjuncts: predicates with associated constants.
+      predicates = root_verb.semantics().predicates_list()[-len(constants):]
+      bigrams = list(zip(predicates, constants))
+      for bigram in bigrams:
+        if bigram in self.predicate_to_idx:
+          score += predicate_logps[self.predicate_to_idx[bigram]]
 
     return score
