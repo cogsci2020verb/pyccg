@@ -1104,6 +1104,13 @@ class Expression(SubstituteBindingsI):
         """
         return self.visit(lambda e: e.constants(),
                           lambda parts: functools.reduce(operator.or_, parts, set()))
+    
+    def constants_list(self):
+        """
+        Returns a list of consants
+        """
+        return self.visit(lambda e: e.constants_list(),
+                          lambda parts: functools.reduce(operator.concat, parts, []))
 
     def predicates(self):
         """
@@ -1235,7 +1242,15 @@ class ApplicationExpression(Expression):
         else:
             function_constants = self.function.constants()
         return function_constants | self.argument.constants()
-
+    
+    def constants_list(self):
+        """:see: Expression.constants()"""
+        if isinstance(self.function, AbstractVariableExpression):
+            function_constants = []
+        else:
+            function_constants = self.function.constants_list()
+        return function_constants + self.argument.constants_list()
+        
     def predicates(self):
         """:see: Expression.predicates()"""
         if isinstance(self.function, ConstantExpression):
@@ -1444,6 +1459,10 @@ class IndividualVariableExpression(AbstractVariableExpression):
     def constants(self):
         """:see: Expression.constants()"""
         return set()
+    
+    def constants_list(self):
+        """:see: Expression.constants()"""
+        return []
 
 class FunctionVariableExpression(AbstractVariableExpression):
     """This class represents variables that take the form of a single uppercase
@@ -1457,6 +1476,10 @@ class FunctionVariableExpression(AbstractVariableExpression):
     def constants(self):
         """:see: Expression.constants()"""
         return set()
+    
+    def constants_list(self):
+        """:see: Expression.constants()"""
+        return []
 
 class EventVariableExpression(IndividualVariableExpression):
     """This class represents variables that take the form of a single lowercase
@@ -1502,7 +1525,10 @@ class ConstantExpression(AbstractVariableExpression):
     def constants(self):
         """:see: Expression.constants()"""
         return set([self.variable])
-
+    
+    def constants_list(self):
+        """:see: Expression.constants()"""
+        return [self.variable]
 
 def VariableExpression(variable):
     """

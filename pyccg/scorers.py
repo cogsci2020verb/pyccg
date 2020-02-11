@@ -7,6 +7,10 @@ from collections import Counter
 from copy import copy
 import logging
 
+import itertools
+import functools
+import operator
+
 from nltk.tree import Tree
 import numpy as np
 import torch as T
@@ -209,7 +213,8 @@ class FrameSemanticsScorer(Scorer):
   def __init__(self, lexicon, frames,
                root_types=(r"(S\N)", r"((S\N)/N)"),
                frame_weights=None,
-               predicates=None):
+               predicates=None,
+               predicate_mode=None):
     """
     Args:
       lexicon:
@@ -221,6 +226,8 @@ class FrameSemanticsScorer(Scorer):
         `i`th entry in `frames`.
       predicates: Required iff `frame_weights` is provided. The `j`th entry in
         this list corresponds to the `j`th column of `frame_weights`.
+      predicate_mode:  Must be ['unigrams', 'bigrams']. Whether predicate 
+      rows are a distribution over unigrams or 'bigrams' (conjuncts containing an argument filter and a constant) in the ontology.
     """
     super().__init__(lexicon)
 
@@ -235,6 +242,7 @@ class FrameSemanticsScorer(Scorer):
 
     self.root_types = set(root_types)
     self.gradients_disabled = False
+    self.predicate_mode = predicate_mode
 
     ontology = self._lexicon.ontology
 
@@ -244,17 +252,45 @@ class FrameSemanticsScorer(Scorer):
                          "also provide ordered an `predicates` list.")
 
       self.predicates, self.predicate_to_idx = [], {}
-      all_keys = set(ontology.constants_dict.keys()) | set(ontology.functions_dict.keys())
+      
+      if predicate_mode == 'unigram':
+          all_keys = set(ontology.constants_dict.keys()) | set(ontology.functions_dict.keys())
+      elif predicate_mode == 'bigram':
+          all_conjunct_filters = set(ontology.functions_dict.keys())
+          all_conjunct_constants = set(ontology.constants_dict.keys())
+          all_keys = set(itertools.product(all_conjunct_filters, all_conjunct_constants))
+          
+          self.conjunct_filters, self.conjunct_constants = set(), set()
+      else:
+          raise ValueError("Unsupported predicate mode {}. Must be 'unigram' or 'bigram'".format(predicate_mode))
+      
       for idx, predicate in enumerate(predicates):
         if predicate not in all_keys:
-          raise ValueError("Unknown pre-trained predicate `%s` not available in this ontology" % predicate)
-
-        pred = l.Variable(predicate)
+          raise ValueError("Unknown pre-trained predicate n-gram `%s` not available in this ontology" % str(predicate))
+        if predicate_mode == 'unigram':
+            pred = l.Variable(predicate)
+        elif predicate_mode == 'bigram':
+            if predicate not in all_keys:
+                raise ValueError("Unknown pre-trained predicate n-gram `%s` not available in this ontology" % str(predicate))
+            
+            conjunct_filter, conjunct_constant = predicate
+            pred = (l.Variable(conjunct_filter), l.Variable(conjunct_constant))
+            self.conjunct_filters.add(conjunct_filter)
+            self.conjunct_constants.add(conjunct_constant)
+        
         self.predicates.append(pred)
         self.predicate_to_idx[pred] = idx
     else:
-      self.predicates = [l.Variable(val.name) for val in ontology.functions + ontology.constants]
-      self.predicate_to_idx = {pred: idx for idx, pred in enumerate(sorted(self.predicates))}
+      if predicate_mode == 'unigram': 
+          self.predicates = [l.Variable(val.name) for val in ontology.functions + ontology.constants]
+          self.predicate_to_idx = {pred: idx for idx, pred in enumerate(sorted(self.predicates))}
+      elif predicate_mode == 'bigram':
+          self.conjunct_filters = set(ontology.functions_dict.keys())
+          self.conjunct_constants = set(ontology.constants_dict.keys())
+          all_keys = sorted(list(set(itertools.product(self.conjunct_filters, self.conjunct_constants))))
+
+          self.predicates = [(l.Variable(filter), l.Variable(constant)) for (filter, constant) in all_keys]
+          self.predicate_to_idx = {pred: idx for idx, pred in enumerate(sorted(self.predicates))}
 
     # Represent unnormalized frame distributions as an embedding layer
     weights_shape = (len(self.frames), len(self.predicates))
@@ -314,10 +350,23 @@ class FrameSemanticsScorer(Scorer):
     # DEV: skip predicates.
     # for predicate in root_verb.semantics().predicates():
     #   score += predicate_logps[self.predicate_to_idx[predicate]]
+ 
+    if self.predicate_mode == 'unigram':
+        for constant in root_verb.semantics().constants():
+          constant = l.Variable(constant.name)
+          if constant in self.predicate_to_idx:
+            score += predicate_logps[self.predicate_to_idx[constant]]
 
-    for constant in root_verb.semantics().constants():
-      constant = l.Variable(constant.name)
-      if constant in self.predicate_to_idx:
-        score += predicate_logps[self.predicate_to_idx[constant]]
+    elif self.predicate_mode == 'bigram':
+        try:
+            constants = root_verb.semantics().constants_list()
+            constants = [l.Variable(c.name) for c in constants]
+            constants.reverse()
+            # DEV: only get conjuncts: predicates with associated constants.
+            predicates = root_verb.semantics().predicates_list()[-len(constants):]
+            bigrams = list(zip(predicates, constants))
+            for bigram in bigrams:
+                if bigram in self.predicate_to_idx:
+                    score += predicate_logps[self.predicate_to_idx[bigram]]
 
     return score
