@@ -283,7 +283,7 @@ class WordLearner(object):
     rewards = [_update_distant_success_fn(result, model, answer)[1] for result, _, _ in weighted_results]
 
     from pprint import pprint
-    pprint(list(zip([str(result[0].label()[0].semantics()) for result, _, _ in weighted_results], rewards)))
+    pprint(sorted(list(zip([str(result.label()[0].semantics()) for result, _, _ in weighted_results], rewards))))
     success = T.stack([T.tensor(reward) for reward in rewards])
     probs = T.exp(T.stack([logp.detach() for _, logp, _ in weighted_results]))
     probs = probs / T.sum(probs)
