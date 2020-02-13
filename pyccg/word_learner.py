@@ -169,7 +169,7 @@ class WordLearner(object):
                               **augment_lexicon_args)
     except NoParsesError:
       # TODO(Jiayuan Mao @ 04/10): suppress the warnings for now.
-      # L.warning("Failed to induce any novel meanings.")
+      L.warning("Failed to induce any novel meanings.")
       return self.lexicon
 
     return lex
@@ -189,7 +189,7 @@ class WordLearner(object):
     return ret
 
   def generative_cross_entropy(self, sentence, model, sentence_meta, answer, lemmas, augment_lexicon_args):
-    """Yield 'generative' cross entropy by comparing weighted scores over parses containing 
+    """Yield 'generative' cross entropy by comparing weighted scores over parses containing
     a ground truth lemma vs. a set of other lemmas. Requires that 'sentence' contain
     one of the lemmas."""
     # Generate masked indices where the true sentence is at index 0.
@@ -281,6 +281,9 @@ class WordLearner(object):
       return aug_lexicon, {0: 0.0}
 
     rewards = [_update_distant_success_fn(result, model, answer)[1] for result, _, _ in weighted_results]
+
+    from pprint import pprint
+    pprint(list(zip([str(result[0].label()[0].semantics()) for result, _, _ in weighted_results], rewards)))
     success = T.stack([T.tensor(reward) for reward in rewards])
     probs = T.exp(T.stack([logp.detach() for _, logp, _ in weighted_results]))
     probs = probs / T.sum(probs)

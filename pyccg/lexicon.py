@@ -974,6 +974,8 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
         #                         for cat in syntax_comb)
         # n_expr_combs = np.prod(list(map(len, candidate_exprs)))
         all_expr_combs = product_candidate_exprs(syntax_comb)
+        print("--------- Beginning zero_shot enum", token_comb, tuple(str(cat) for cat in syntax_comb),
+              len(all_expr_combs), len(results))
         for expr_comb in tqdm(all_expr_combs, desc="Expressions"):
           # Compute likelihood of this joint syntax--semantics assignment.
           # TODO(Jiayuan Mao @ 04/08): += logp? or += p?
@@ -1003,6 +1005,7 @@ def predict_zero_shot(lex, tokens, candidate_syntaxes, sentence, ontology,
             # Add category priors.
             log_prior = sum(T.log(weight) for weight in syntax_weights)
             joint_score = log_prior + logp
+
             if joint_score == -np.inf:
               # Zero probability. Skip.
               continue
@@ -1100,9 +1103,11 @@ def augment_lexicon(old_lex, query_tokens, query_token_syntaxes,
       for entry, weight in sorted(candidates.items(), key=lambda x: x[1], reverse=True):
         lex.ontology.register_expressions([entry[1]])
         # TODO(Jiayuan Mao @ 04/10): bring this log back for NSCL.
-        print('Induce new entries for token {}: syntax: {} semantics: {}'.format(token, entry[0], entry[1]))
-        L.info('Induce new entries for token {}: syntax: {} semantics: {}'.format(token, entry[0], entry[1]))
-        L.info("Weight: %.4f %s", weight / total_mass * beta, entry)
+        print('Induce new entries for token {} {}: syntax: {} semantics: {}'
+              .format(token, weight.item() / total_mass * beta, entry[0], entry[1]))
+      import sys; sys.stdout.flush()
+        # L.info('Induce new entries for token {}: syntax: {} semantics: {}'.format(token, entry[0], entry[1]))
+        # L.info("Weight: %.4f %s", weight / total_mass * beta, entry)
 
   return lex
 

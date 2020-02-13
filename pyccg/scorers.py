@@ -58,8 +58,8 @@ class Scorer(nn.Module):
   def clone_with_lexicon(self, lexicon):
     if self.requires_semantics and not lexicon.has_semantics:
       # Check that the lexicon assigns semantic representations
-      L.warn("Semantics-sensitive scorer is being cloned with a semantics-free lexicon. "
-             "Going to return an empty scorer.")
+      # L.warn("Semantics-sensitive scorer is being cloned with a semantics-free lexicon. "
+      #        "Going to return an empty scorer.")
       return EmptyScorer(lexicon)
 
     clone = copy(self)
@@ -226,7 +226,7 @@ class FrameSemanticsScorer(Scorer):
         `i`th entry in `frames`.
       predicates: Required iff `frame_weights` is provided. The `j`th entry in
         this list corresponds to the `j`th column of `frame_weights`.
-      predicate_mode:  Must be ['unigrams', 'bigrams']. Whether predicate 
+      predicate_mode:  Must be ['unigrams', 'bigrams']. Whether predicate
       rows are a distribution over unigrams or 'bigrams' (conjuncts containing an argument filter and a constant) in the ontology.
     """
     super().__init__(lexicon)
@@ -252,18 +252,18 @@ class FrameSemanticsScorer(Scorer):
                          "also provide ordered an `predicates` list.")
 
       self.predicates, self.predicate_to_idx = [], {}
-      
+
       if predicate_mode == 'unigram':
           all_keys = set(ontology.constants_dict.keys()) | set(ontology.functions_dict.keys())
       elif predicate_mode == 'bigram':
           all_conjunct_filters = set(ontology.functions_dict.keys())
           all_conjunct_constants = set(ontology.constants_dict.keys())
           all_keys = set(itertools.product(all_conjunct_filters, all_conjunct_constants))
-          
+
           self.conjunct_filters, self.conjunct_constants = set(), set()
       else:
           raise ValueError("Unsupported predicate mode {}. Must be 'unigram' or 'bigram'".format(predicate_mode))
-      
+
       for idx, predicate in enumerate(predicates):
         if predicate not in all_keys:
           raise ValueError("Unknown pre-trained predicate n-gram `%s` not available in this ontology" % str(predicate))
@@ -272,16 +272,16 @@ class FrameSemanticsScorer(Scorer):
         elif predicate_mode == 'bigram':
             if predicate not in all_keys:
                 raise ValueError("Unknown pre-trained predicate n-gram `%s` not available in this ontology" % str(predicate))
-            
+
             conjunct_filter, conjunct_constant = predicate
             pred = (l.Variable(conjunct_filter), l.Variable(conjunct_constant))
             self.conjunct_filters.add(conjunct_filter)
             self.conjunct_constants.add(conjunct_constant)
-        
+
         self.predicates.append(pred)
         self.predicate_to_idx[pred] = idx
     else:
-      if predicate_mode == 'unigram': 
+      if predicate_mode == 'unigram':
           self.predicates = [l.Variable(val.name) for val in ontology.functions + ontology.constants]
           self.predicate_to_idx = {pred: idx for idx, pred in enumerate(sorted(self.predicates))}
       elif predicate_mode == 'bigram':
