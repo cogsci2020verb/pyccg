@@ -1120,7 +1120,6 @@ def augment_lexicon_nscl(
   # TODO(Jiayuan Mao @ 01/28): add the distant function....
   likelihood_fns = (
     build_typecheck_likelihood(answer),
-    build_distant_likelihood(answer)
   ) + tuple(likelihood_fns)
 
   return augment_lexicon(
